@@ -21,6 +21,7 @@ export default function TopNav({ onMenuClick }: TopNavProps) {
     vocabulary: 0,
     grammar: 0,
     text: 0,
+    examples: 0,
     listening: 0,
   });
 
@@ -34,6 +35,7 @@ export default function TopNav({ onMenuClick }: TopNavProps) {
       vocabulary: lessonSummary.vocabulary,
       grammar: lessonSummary.grammar,
       text: lessonSummary.text,
+      examples: lessonSummary.examples,
       listening: lessonSummary.listening,
     });
     setTodayMinutes(today);
@@ -99,6 +101,7 @@ export default function TopNav({ onMenuClick }: TopNavProps) {
         <span>单词 {progress.vocabulary}%</span>
         <span>语法 {progress.grammar}%</span>
         <span>课文 {progress.text}%</span>
+        <span>例句 {progress.examples}%</span>
         <span>听力 {progress.listening}%</span>
         <span>今日 {todayMinutes} 分</span>
       </div>

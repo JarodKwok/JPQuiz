@@ -1,53 +1,105 @@
 "use client";
 
-import type { AIMessage, AIProviderConfig, AISettings } from "@/types";
+import type { AIMessage, AIProviderConfig } from "@/types";
+import { loadSecureAISettings } from "@/services/secure-settings";
+import {
+  normalizeAISettings,
+  normalizeStoredAIConfig,
+} from "@/services/ai/settings";
+
+const RETRYABLE_LOCAL_STATUSES = new Set([429, 502, 503, 504]);
+const MAX_LOCAL_RETRIES = 1;
 
 interface StoredAIConfig {
   provider: string;
   config: AIProviderConfig;
 }
 
-function getStoredAIConfig(): StoredAIConfig {
-  const settingsRaw = localStorage.getItem("jpquiz-ai-settings");
-  if (!settingsRaw) {
-    throw new Error("请先在「设置」页面配置 AI 模型和 API Key。");
+async function getStoredAIConfig(): Promise<StoredAIConfig> {
+  const rawSettings = await loadSecureAISettings();
+  if (!rawSettings) {
+    throw new Error("请先在「设置」页面填写并保存 AI 配置。");
   }
 
-  const settings = JSON.parse(settingsRaw) as AISettings;
+  const settings = normalizeAISettings(rawSettings);
   const provider = settings.activeProvider || "openai";
-  const config = settings.providers?.[provider];
+  const config = normalizeStoredAIConfig(provider, settings.providers?.[provider]);
 
   if (!config?.apiKey) {
-    throw new Error("请先在「设置」页面配置 API Key。");
+    throw new Error("请先在「设置」页面填写并保存 API Key。");
   }
 
   return { provider, config };
+}
+
+function parseErrorMessage(errText: string) {
+  try {
+    const errJson = JSON.parse(errText);
+    if (typeof errJson === "string") return errJson;
+    if (errJson?.error && typeof errJson.error === "string") {
+      return errJson.error;
+    }
+    if (errJson?.error?.message && typeof errJson.error.message === "string") {
+      return errJson.error.message;
+    }
+    if (errJson?.message && typeof errJson.message === "string") {
+      return errJson.message;
+    }
+  } catch {
+    // keep raw text
+  }
+
+  return errText;
 }
 
 export async function streamAIText(
   messages: AIMessage[],
   onDelta?: (chunk: string, fullText: string) => void
 ) {
-  const { provider, config } = getStoredAIConfig();
+  const { provider, config } = await getStoredAIConfig();
 
-  const res = await fetch("/api/ai/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      messages,
-      provider,
-      config,
-    }),
-  });
+  let res: Response | null = null;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= MAX_LOCAL_RETRIES; attempt++) {
+    try {
+      res = await fetch("/api/ai/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages,
+          provider,
+          config,
+        }),
+      });
+
+      if (
+        res.ok ||
+        !RETRYABLE_LOCAL_STATUSES.has(res.status) ||
+        attempt === MAX_LOCAL_RETRIES
+      ) {
+        break;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+    } catch (error) {
+      lastError = error;
+      if (attempt === MAX_LOCAL_RETRIES) {
+        throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+    }
+  }
+
+  if (!res) {
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("AI 请求失败。");
+  }
 
   if (!res.ok) {
     const errText = await res.text();
-    try {
-      const errJson = JSON.parse(errText);
-      throw new Error(errJson.error || errText);
-    } catch {
-      throw new Error(`请求失败 (${res.status}): ${errText}`);
-    }
+    throw new Error(`请求失败 (${res.status}): ${parseErrorMessage(errText)}`);
   }
 
   const contentType = res.headers.get("content-type") || "";

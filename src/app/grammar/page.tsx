@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { ChevronDown, ChevronRight, Loader2, RefreshCw } from "lucide-react";
 import MasteryButtons from "@/components/lesson/MasteryButtons";
+import ModuleQuizPanel from "@/components/quiz/ModuleQuizPanel";
+import ModuleModeTabs from "@/components/quiz/ModuleModeTabs";
 import { useModulePage } from "@/hooks/useModulePage";
 import { useStudySession } from "@/hooks/useStudySession";
 import { getModuleContent } from "@/services/content";
@@ -21,6 +23,7 @@ export default function GrammarPage() {
   useStudySession("grammar", currentLesson);
 
   const [points, setPoints] = useState<GrammarViewItem[]>([]);
+  const [mode, setMode] = useState<"study" | "quiz">("study");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -114,110 +117,126 @@ export default function GrammarPage() {
         </button>
       </div>
 
-      {!loading && error && (
-        <div className="bg-bg-card border border-border rounded-xl p-6 text-sm text-text-secondary">
-          <p>{error}</p>
-          <button
-            onClick={() => void loadPoints(true)}
-            className="mt-3 text-xs px-3 py-1.5 rounded-lg border border-border hover:border-primary/40 hover:text-primary transition-colors"
-          >
-            重试
-          </button>
-        </div>
-      )}
+      <div className="mb-6">
+        <ModuleModeTabs mode={mode} onChange={setMode} />
+      </div>
 
-      {loading && (
-        <div className="flex justify-center py-12">
-          <Loader2 size={24} className="animate-spin text-primary" />
-        </div>
-      )}
-
-      {!loading && !error && (
-        <div className="space-y-3">
-          {points.map((point) => {
-            const isExpanded = expandedId === point.id;
-
-            return (
-              <div
-                key={point.id}
-                className="bg-bg-card border border-border rounded-xl overflow-hidden
-                           hover:border-primary/20 transition-colors"
+      {mode === "quiz" ? (
+        <ModuleQuizPanel
+          module="grammar"
+          lessonId={currentLesson}
+          content={points.map(({ mastery, ...item }) => item)}
+          contentLoading={loading}
+          contentError={error}
+        />
+      ) : (
+        <>
+          {!loading && error && (
+            <div className="bg-bg-card border border-border rounded-xl p-6 text-sm text-text-secondary">
+              <p>{error}</p>
+              <button
+                onClick={() => void loadPoints(true)}
+                className="mt-3 text-xs px-3 py-1.5 rounded-lg border border-border hover:border-primary/40 hover:text-primary transition-colors"
               >
-                <button
-                  onClick={() => setExpandedId(isExpanded ? null : point.id)}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-left"
-                >
-                  {isExpanded ? (
-                    <ChevronDown size={16} className="text-primary shrink-0" />
-                  ) : (
-                    <ChevronRight
-                      size={16}
-                      className="text-text-muted shrink-0"
-                    />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-text-muted font-mono">
-                        {point.id}
-                      </span>
-                      <span className="font-medium text-text text-sm">
-                        {point.name}
-                      </span>
-                    </div>
-                    <p className="text-xs text-text-secondary mt-0.5">
-                      {point.meaning}
-                    </p>
-                  </div>
-                </button>
+                重试
+              </button>
+            </div>
+          )}
 
-                <div
-                  className={cn(
-                    "overflow-hidden transition-all duration-200",
-                    isExpanded ? "max-h-[32rem]" : "max-h-0"
-                  )}
-                >
-                  <div className="px-4 pb-4 space-y-3 border-t border-border pt-3">
-                    <div>
-                      <span className="text-[11px] text-text-muted uppercase tracking-wider">
-                        接续方式
-                      </span>
-                      <p className="text-sm text-text mt-1 font-mono bg-bg rounded-lg px-3 py-2">
-                        {point.connection}
-                      </p>
-                    </div>
+          {loading && (
+            <div className="flex justify-center py-12">
+              <Loader2 size={24} className="animate-spin text-primary" />
+            </div>
+          )}
 
-                    <div>
-                      <span className="text-[11px] text-text-muted uppercase tracking-wider">
-                        例句
-                      </span>
-                      <p className="text-sm text-text mt-1">{point.example}</p>
-                      <p className="text-xs text-text-secondary mt-0.5">
-                        {point.exampleTranslation}
-                      </p>
-                    </div>
+          {!loading && !error && (
+            <div className="space-y-3">
+              {points.map((point) => {
+                const isExpanded = expandedId === point.id;
 
-                    {point.tip && (
-                      <div className="bg-accent-light/20 rounded-lg px-3 py-2">
-                        <span className="text-[11px] text-accent font-medium">
-                          注意
-                        </span>
+                return (
+                  <div
+                    key={point.id}
+                    className="bg-bg-card border border-border rounded-xl overflow-hidden
+                               hover:border-primary/20 transition-colors"
+                  >
+                    <button
+                      onClick={() => setExpandedId(isExpanded ? null : point.id)}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left"
+                    >
+                      {isExpanded ? (
+                        <ChevronDown size={16} className="text-primary shrink-0" />
+                      ) : (
+                        <ChevronRight
+                          size={16}
+                          className="text-text-muted shrink-0"
+                        />
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-text-muted font-mono">
+                            {point.id}
+                          </span>
+                          <span className="font-medium text-text text-sm">
+                            {point.name}
+                          </span>
+                        </div>
                         <p className="text-xs text-text-secondary mt-0.5">
-                          {point.tip}
+                          {point.meaning}
                         </p>
                       </div>
-                    )}
+                    </button>
 
-                    <MasteryButtons
-                      current={point.mastery}
-                      onChange={(level) => void handleMastery(point.id, level)}
-                      size="sm"
-                    />
+                    <div
+                      className={cn(
+                        "overflow-hidden transition-all duration-200",
+                        isExpanded ? "max-h-[32rem]" : "max-h-0"
+                      )}
+                    >
+                      <div className="px-4 pb-4 space-y-3 border-t border-border pt-3">
+                        <div>
+                          <span className="text-[11px] text-text-muted uppercase tracking-wider">
+                            接续方式
+                          </span>
+                          <p className="text-sm text-text mt-1 font-mono bg-bg rounded-lg px-3 py-2">
+                            {point.connection}
+                          </p>
+                        </div>
+
+                        <div>
+                          <span className="text-[11px] text-text-muted uppercase tracking-wider">
+                            例句
+                          </span>
+                          <p className="text-sm text-text mt-1">{point.example}</p>
+                          <p className="text-xs text-text-secondary mt-0.5">
+                            {point.exampleTranslation}
+                          </p>
+                        </div>
+
+                        {point.tip && (
+                          <div className="bg-accent-light/20 rounded-lg px-3 py-2">
+                            <span className="text-[11px] text-accent font-medium">
+                              注意
+                            </span>
+                            <p className="text-xs text-text-secondary mt-0.5">
+                              {point.tip}
+                            </p>
+                          </div>
+                        )}
+
+                        <MasteryButtons
+                          current={point.mastery}
+                          onChange={(level) => void handleMastery(point.id, level)}
+                          size="sm"
+                        />
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+                );
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

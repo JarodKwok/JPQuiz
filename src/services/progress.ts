@@ -3,6 +3,7 @@ import { emitDataUpdated } from "./events";
 import type { LearningProgress, MasteryLevel, Module } from "@/types";
 import { MODULES } from "@/types";
 import type { ModuleContent } from "@/types/content";
+import type { QuizQuestionType, QuizSourceType } from "@/types/quiz";
 import { getModuleItemKeys } from "./content";
 
 const MASTERY_SCORE: Record<MasteryLevel, number> = {
@@ -17,8 +18,19 @@ export interface HistoryStats {
   masteredItems: number;
   totalStudyMinutes: number;
   wrongAnswersCount: number;
+  totalQuizSessions: number;
   moduleMasteryCounts: Record<Module, number>;
   moduleProgress: Record<Module, number>;
+  quizAccuracyByType: Record<QuizQuestionType, number>;
+  recentQuizSessions: Array<{
+    title: string;
+    lessonId: number;
+    module: Module;
+    questionType: QuizQuestionType;
+    sourceType: QuizSourceType;
+    accuracy: number;
+    createdAt: string;
+  }>;
   weakItems: Array<{
     itemKey: string;
     lessonId: number;
@@ -120,11 +132,13 @@ export async function getLessonProgressSummary(lessonId: number) {
 }
 
 export async function getHistoryStats(): Promise<HistoryStats> {
-  const [progressList, masteryList, sessions, wrongAnswersCount] = await Promise.all([
+  const [progressList, masteryList, sessions, wrongAnswersCount, quizSessions] =
+    await Promise.all([
     db.learningProgress.toArray(),
     db.masteryStatus.toArray(),
     db.studySessions.toArray(),
     db.wrongAnswers.count(),
+    db.quizSessions.toArray(),
   ]);
 
   const studiedLessonSet = new Set<number>();
@@ -135,6 +149,9 @@ export async function getHistoryStats(): Promise<HistoryStats> {
     if (typeof session.lessonId === "number") {
       studiedLessonSet.add(session.lessonId);
     }
+  }
+  for (const quizSession of quizSessions) {
+    studiedLessonSet.add(quizSession.lessonId);
   }
 
   const moduleMasteryCounts = {
@@ -185,6 +202,44 @@ export async function getHistoryStats(): Promise<HistoryStats> {
     0
   );
 
+  const quizAccuracyTotals = {
+    multiple_choice: { correct: 0, total: 0 },
+    fill_blank: { correct: 0, total: 0 },
+    translation: { correct: 0, total: 0 },
+  } satisfies Record<QuizQuestionType, { correct: number; total: number }>;
+
+  for (const session of quizSessions) {
+    quizAccuracyTotals[session.questionType].correct += session.correctCount;
+    quizAccuracyTotals[session.questionType].total += session.totalQuestions;
+  }
+
+  const quizAccuracyByType = {
+    multiple_choice:
+      quizAccuracyTotals.multiple_choice.total > 0
+        ? Math.round(
+            (quizAccuracyTotals.multiple_choice.correct /
+              quizAccuracyTotals.multiple_choice.total) *
+              100
+          )
+        : 0,
+    fill_blank:
+      quizAccuracyTotals.fill_blank.total > 0
+        ? Math.round(
+            (quizAccuracyTotals.fill_blank.correct /
+              quizAccuracyTotals.fill_blank.total) *
+              100
+          )
+        : 0,
+    translation:
+      quizAccuracyTotals.translation.total > 0
+        ? Math.round(
+            (quizAccuracyTotals.translation.correct /
+              quizAccuracyTotals.translation.total) *
+              100
+          )
+        : 0,
+  } satisfies Record<QuizQuestionType, number>;
+
   const weakItems = masteryList
     .filter((item) => item.status === "weak" || item.status === "fuzzy")
     .sort((left, right) => right.reviewCount - left.reviewCount)
@@ -201,13 +256,29 @@ export async function getHistoryStats(): Promise<HistoryStats> {
     (item) => item.status === "mastered"
   ).length;
 
+  const recentQuizSessions = [...quizSessions]
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
+    .slice(0, 5)
+    .map((session) => ({
+      title: session.title,
+      lessonId: session.lessonId,
+      module: session.module,
+      questionType: session.questionType,
+      sourceType: session.sourceType,
+      accuracy: session.accuracy,
+      createdAt: session.createdAt,
+    }));
+
   return {
     lessonsStudied: studiedLessonSet.size,
     masteredItems,
     totalStudyMinutes: Math.round(totalStudySeconds / 60),
     wrongAnswersCount,
+    totalQuizSessions: quizSessions.length,
     moduleMasteryCounts,
     moduleProgress,
+    quizAccuracyByType,
+    recentQuizSessions,
     weakItems,
   };
 }

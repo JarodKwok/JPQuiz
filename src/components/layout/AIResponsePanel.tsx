@@ -3,7 +3,8 @@
 import { useMemo } from "react";
 import { X, Loader2 } from "lucide-react";
 import MultipleChoiceQuiz from "@/components/quiz/MultipleChoiceQuiz";
-import type { QuizData, QuizResult } from "@/types/quiz";
+import { parseQuizPayload } from "@/services/quiz";
+import type { QuizData, QuizSubmission } from "@/types/quiz";
 import type { Module } from "@/types";
 import { saveWrongAnswer } from "@/services/wrongAnswers";
 import { saveMastery } from "@/services/mastery";
@@ -22,9 +23,9 @@ function parseQuizFromContent(content: string): { quiz: QuizData | null; textBef
 
   // 尝试直接解析整段为 JSON
   try {
-    const parsed = JSON.parse(trimmed);
-    if (parsed.type === "quiz" && parsed.data?.questions) {
-      return { quiz: parsed.data, textBefore: "", textAfter: "" };
+    const parsed = parseQuizPayload(JSON.parse(trimmed));
+    if (parsed.questions.length > 0) {
+      return { quiz: parsed, textBefore: "", textAfter: "" };
     }
   } catch {
     // not pure JSON
@@ -35,11 +36,11 @@ function parseQuizFromContent(content: string): { quiz: QuizData | null; textBef
   const match = trimmed.match(codeBlockRegex);
   if (match) {
     try {
-      const parsed = JSON.parse(match[1].trim());
-      if (parsed.type === "quiz" && parsed.data?.questions) {
+      const parsed = parseQuizPayload(JSON.parse(match[1].trim()));
+      if (parsed.questions.length > 0) {
         const idx = trimmed.indexOf(match[0]);
         return {
-          quiz: parsed.data,
+          quiz: parsed,
           textBefore: trimmed.slice(0, idx).trim(),
           textAfter: trimmed.slice(idx + match[0].length).trim(),
         };
@@ -69,10 +70,10 @@ function parseQuizFromContent(content: string): { quiz: QuizData | null; textBef
     }
     if (end !== -1) {
       try {
-        const parsed = JSON.parse(trimmed.slice(start, end));
-        if (parsed.type === "quiz" && parsed.data?.questions) {
+        const parsed = parseQuizPayload(JSON.parse(trimmed.slice(start, end)));
+        if (parsed.questions.length > 0) {
           return {
-            quiz: parsed.data,
+            quiz: parsed,
             textBefore: trimmed.slice(0, start).trim(),
             textAfter: trimmed.slice(end).trim(),
           };
@@ -98,39 +99,49 @@ export default function AIResponsePanel({
     return parseQuizFromContent(content);
   }, [content, loading]);
 
-  const handleQuizComplete = (results: QuizResult[]) => {
+  const handleQuizComplete = (submission: QuizSubmission) => {
     const quiz = parsed?.quiz;
     if (!quiz) return;
 
     void Promise.all(
-      results.map(async (result) => {
+      submission.results.map(async (result) => {
         const question = quiz.questions.find(
           (item) => item.id === result.questionId
         );
         if (!question) return;
 
-        const itemKey = `quiz:${lessonId}:${module}:${question.id}`;
-        const selectedAnswer =
-          result.selectedIndex >= 0
-            ? question.options[result.selectedIndex]
-            : undefined;
-        const correctAnswer = question.options[result.correctIndex] || "";
+        const knowledgeKeys =
+          result.knowledgeKeys.length > 0
+            ? result.knowledgeKeys
+            : [`quiz:${lessonId}:${module}:${question.id}`];
 
-        await saveMastery(
-          lessonId,
-          module,
-          itemKey,
-          result.isCorrect ? "mastered" : "weak"
+        await Promise.all(
+          knowledgeKeys.map((itemKey) =>
+            saveMastery(
+              lessonId,
+              module,
+              itemKey,
+              result.isCorrect ? "mastered" : "weak"
+            )
+          )
         );
 
         if (!result.isCorrect) {
           await saveWrongAnswer({
             lessonId,
             module,
-            question: question.question,
-            userAnswer: selectedAnswer,
-            correctAnswer,
+            question: question.prompt,
+            userAnswer:
+              typeof result.userAnswer === "number"
+                ? question.type === "multiple_choice"
+                  ? question.options[result.userAnswer] || ""
+                  : String(result.userAnswer)
+                : result.userAnswer || "",
+            correctAnswer: result.correctAnswer,
             errorReason: question.explanation,
+            questionType: question.type,
+            sourceType: quiz.sourceType,
+            knowledgeKeys: result.knowledgeKeys,
           });
         }
       })
@@ -186,6 +197,7 @@ export default function AIResponsePanel({
               {/* 交互式测验 */}
               {parsed.quiz && (
                 <MultipleChoiceQuiz
+                  key={`${lessonId}-${module}-${parsed.quiz.title}-${parsed.quiz.questions.length}`}
                   quiz={parsed.quiz}
                   onComplete={handleQuizComplete}
                 />

@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { Volume2, RefreshCw, Loader2 } from "lucide-react";
 import MasteryButtons from "@/components/lesson/MasteryButtons";
+import ModuleQuizPanel from "@/components/quiz/ModuleQuizPanel";
+import ModuleModeTabs from "@/components/quiz/ModuleModeTabs";
 import { useModulePage } from "@/hooks/useModulePage";
 import { useStudySession } from "@/hooks/useStudySession";
 import { getModuleContent } from "@/services/content";
@@ -20,6 +22,7 @@ export default function VocabularyPage() {
   useStudySession("vocabulary", currentLesson);
 
   const [words, setWords] = useState<VocabularyViewItem[]>([]);
+  const [mode, setMode] = useState<"study" | "quiz">("study");
   const [showReading, setShowReading] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -111,14 +114,25 @@ export default function VocabularyPage() {
             )}
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowReading(!showReading)}
-            className="text-xs px-3 py-1.5 rounded-lg border border-border text-text-secondary
-                       hover:border-primary/40 hover:text-primary transition-colors"
-          >
-            {showReading ? "隐藏读音" : "显示读音"}
-          </button>
+        {mode === "study" ? (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowReading(!showReading)}
+              className="text-xs px-3 py-1.5 rounded-lg border border-border text-text-secondary
+                         hover:border-primary/40 hover:text-primary transition-colors"
+            >
+              {showReading ? "隐藏读音" : "显示读音"}
+            </button>
+            <button
+              onClick={() => void loadWords(true)}
+              disabled={loading}
+              className="p-1.5 rounded-lg border border-border text-text-secondary
+                         hover:border-primary/40 hover:text-primary transition-colors"
+            >
+              <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+            </button>
+          </div>
+        ) : (
           <button
             onClick={() => void loadWords(true)}
             disabled={loading}
@@ -127,71 +141,87 @@ export default function VocabularyPage() {
           >
             <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
           </button>
-        </div>
+        )}
       </div>
 
-      {loading && (
-        <div className="flex justify-center py-12">
-          <Loader2 size={24} className="animate-spin text-primary" />
-        </div>
-      )}
+      <div className="mb-6">
+        <ModuleModeTabs mode={mode} onChange={setMode} />
+      </div>
 
-      {!loading && error && (
-        <div className="bg-bg-card border border-border rounded-xl p-6 text-sm text-text-secondary">
-          <p>{error}</p>
-          <button
-            onClick={() => void loadWords(true)}
-            className="mt-3 text-xs px-3 py-1.5 rounded-lg border border-border hover:border-primary/40 hover:text-primary transition-colors"
-          >
-            重试
-          </button>
-        </div>
-      )}
-
-      {!loading && !error && (
-        <div className="space-y-3">
-          {words.map((word, index) => (
-            <div
-              key={`${word.word}-${index}`}
-              className="bg-bg-card border border-border rounded-xl p-4
-                         hover:border-primary/20 transition-colors"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl font-medium text-text">
-                      {word.word}
-                    </span>
-                    {showReading && (
-                      <span className="text-sm text-primary">{word.reading}</span>
-                    )}
-                    <button
-                      onClick={() => speak(word.word)}
-                      className="p-1 rounded hover:bg-primary/10 text-text-muted
-                                 hover:text-primary transition-colors"
-                    >
-                      <Volume2 size={14} />
-                    </button>
-                  </div>
-                  <p className="text-sm text-text-secondary mt-1">
-                    {word.meaning}
-                  </p>
-                  {word.example && (
-                    <p className="text-xs text-text-muted mt-2 pl-3 border-l-2 border-border">
-                      {word.example}
-                    </p>
-                  )}
-                </div>
-
-                <MasteryButtons
-                  current={word.mastery}
-                  onChange={(level) => void handleMastery(index, level)}
-                  size="sm"
-                />
-              </div>
+      {mode === "quiz" ? (
+        <ModuleQuizPanel
+          module="vocabulary"
+          lessonId={currentLesson}
+          content={words.map(({ mastery, ...item }) => item)}
+          contentLoading={loading}
+          contentError={error}
+        />
+      ) : (
+        <>
+          {loading && (
+            <div className="flex justify-center py-12">
+              <Loader2 size={24} className="animate-spin text-primary" />
             </div>
-          ))}
-        </div>
+          )}
+
+          {!loading && error && (
+            <div className="bg-bg-card border border-border rounded-xl p-6 text-sm text-text-secondary">
+              <p>{error}</p>
+              <button
+                onClick={() => void loadWords(true)}
+                className="mt-3 text-xs px-3 py-1.5 rounded-lg border border-border hover:border-primary/40 hover:text-primary transition-colors"
+              >
+                重试
+              </button>
+            </div>
+          )}
+
+          {!loading && !error && (
+            <div className="space-y-3">
+              {words.map((word, index) => (
+                <div
+                  key={`${word.word}-${index}`}
+                  className="bg-bg-card border border-border rounded-xl p-4
+                             hover:border-primary/20 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl font-medium text-text">
+                          {word.word}
+                        </span>
+                        {showReading && (
+                          <span className="text-sm text-primary">{word.reading}</span>
+                        )}
+                        <button
+                          onClick={() => speak(word.word)}
+                          className="p-1 rounded hover:bg-primary/10 text-text-muted
+                                     hover:text-primary transition-colors"
+                        >
+                          <Volume2 size={14} />
+                        </button>
+                      </div>
+                      <p className="text-sm text-text-secondary mt-1">
+                        {word.meaning}
+                      </p>
+                      {word.example && (
+                        <p className="text-xs text-text-muted mt-2 pl-3 border-l-2 border-border">
+                          {word.example}
+                        </p>
+                      )}
+                    </div>
+
+                    <MasteryButtons
+                      current={word.mastery}
+                      onChange={(level) => void handleMastery(index, level)}
+                      size="sm"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   );

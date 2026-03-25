@@ -1,48 +1,166 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { AIProviderConfig, AISettings } from "@/types";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { DEFAULT_AI_SETTINGS } from "@/services/ai/settings";
 import { cn } from "@/lib/utils";
+
+const DEFAULT_OPENAI_CONFIG = DEFAULT_AI_SETTINGS.providers.openai;
 
 const PROVIDERS = [
   {
     key: "openai",
-    name: "OpenAI",
-    description: "GPT-4.1 / GPT-4.1 mini 等（支持代理）",
-    defaultBaseUrl: "https://api.openai.com/v1",
+    name: "OpenAI / 代理",
+    description: "默认预填 gpt-5.4 + Responses API",
+    defaultBaseUrl: DEFAULT_OPENAI_CONFIG.baseUrl,
+    defaultModel: DEFAULT_OPENAI_CONFIG.model,
   },
   {
     key: "kimi",
     name: "Kimi (月之暗面)",
     description: "Moonshot 系列模型",
     defaultBaseUrl: "https://api.moonshot.cn/v1",
+    defaultModel: "moonshot-v1-8k",
   },
   {
     key: "deepseek",
     name: "DeepSeek",
     description: "DeepSeek Chat / Reasoner",
     defaultBaseUrl: "https://api.deepseek.com/v1",
+    defaultModel: "deepseek-chat",
   },
 ];
 
 export default function SettingsPage() {
-  const { ai, setActiveProvider, setProviderConfig, loadSettings } =
-    useSettingsStore();
+  const { ai, loadSettings, saveSettings } = useSettingsStore();
+  const [draft, setDraft] = useState<AISettings>(ai);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saved" | "error">(
+    "idle"
+  );
+  const [saveMessage, setSaveMessage] = useState("");
 
   useEffect(() => {
-    loadSettings();
+    let isMounted = true;
+
+    void (async () => {
+      const loaded = await loadSettings();
+      if (!isMounted) return;
+      setDraft(loaded);
+      setIsLoading(false);
+    })();
+
+    return () => {
+      isMounted = false;
+    };
   }, [loadSettings]);
+
+  const isDirty = useMemo(
+    () => JSON.stringify(draft) !== JSON.stringify(ai),
+    [ai, draft]
+  );
+
+  function updateActiveProvider(provider: string) {
+    setDraft((current) => ({
+      ...current,
+      activeProvider: provider,
+    }));
+    setSaveState("idle");
+    setSaveMessage("");
+  }
+
+  function updateProviderConfig(
+    provider: string,
+    key: keyof AIProviderConfig,
+    value: string
+  ) {
+    setDraft((current) => ({
+      ...current,
+      providers: {
+        ...current.providers,
+        [provider]: {
+          ...current.providers[provider],
+          [key]: value,
+        },
+      },
+    }));
+    setSaveState("idle");
+    setSaveMessage("");
+  }
+
+  function resetDraft() {
+    setDraft(ai);
+    setSaveState("idle");
+    setSaveMessage("");
+  }
+
+  async function handleSave() {
+    setIsSaving(true);
+    setSaveState("idle");
+    setSaveMessage("");
+
+    try {
+      const saved = await saveSettings(draft);
+      setDraft(saved);
+      setSaveState("saved");
+      setSaveMessage("设置已加密保存到当前浏览器。");
+    } catch (error) {
+      setSaveState("error");
+      setSaveMessage(
+        error instanceof Error ? error.message : "保存失败，请稍后重试。"
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-lg font-semibold text-text">
-          设置
-          <span className="text-text-muted font-normal ml-2 text-sm">
-            せってい
-          </span>
-        </h1>
-        <p className="text-xs text-text-muted mt-1">配置 AI 模型和 API Key</p>
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-lg font-semibold text-text">
+            设置
+            <span className="text-text-muted font-normal ml-2 text-sm">
+              せってい
+            </span>
+          </h1>
+          <p className="text-xs text-text-muted mt-1">
+            配置 AI 模型、代理地址和 API Key
+          </p>
+          {isLoading && (
+            <p className="text-[11px] text-text-muted mt-2">
+              正在读取已保存配置...
+            </p>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          {isDirty && (
+            <span className="text-[11px] px-2 py-1 rounded-full bg-amber-500/10 text-amber-600">
+              有未保存更改
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={resetDraft}
+            disabled={isLoading || isSaving || !isDirty}
+            className="px-3 py-2 rounded-lg border border-border text-sm text-text-muted transition-colors
+                       hover:text-text hover:border-primary/30 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            恢复
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isLoading || isSaving || !isDirty}
+            className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-medium transition-opacity
+                       hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSaving ? "保存中..." : "保存设置"}
+          </button>
+        </div>
       </div>
 
       {/* Provider selector */}
@@ -53,11 +171,13 @@ export default function SettingsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           {PROVIDERS.map((p) => (
             <button
+              type="button"
               key={p.key}
-              onClick={() => setActiveProvider(p.key)}
+              disabled={isLoading}
+              onClick={() => updateActiveProvider(p.key)}
               className={cn(
-                "text-left px-4 py-3 rounded-xl border transition-all",
-                ai.activeProvider === p.key
+                "text-left px-4 py-3 rounded-xl border transition-all disabled:cursor-not-allowed disabled:opacity-60",
+                draft.activeProvider === p.key
                   ? "border-primary bg-primary/5 ring-2 ring-primary/20"
                   : "border-border hover:border-primary/30"
               )}
@@ -74,9 +194,9 @@ export default function SettingsPage() {
       {/* Provider configs */}
       <div className="space-y-6">
         {PROVIDERS.map((p) => {
-          const config = ai.providers[p.key];
+          const config = draft.providers[p.key];
           if (!config) return null;
-          const isActive = ai.activeProvider === p.key;
+          const isActive = draft.activeProvider === p.key;
 
           return (
             <div
@@ -103,13 +223,14 @@ export default function SettingsPage() {
                   <input
                     type="password"
                     value={config.apiKey}
+                    disabled={isLoading}
                     onChange={(e) =>
-                      setProviderConfig(p.key, "apiKey", e.target.value)
+                      updateProviderConfig(p.key, "apiKey", e.target.value)
                     }
                     placeholder="sk-..."
                     className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text
                                placeholder:text-text-muted focus:outline-none focus:ring-2
-                               focus:ring-primary/30 focus:border-primary"
+                               focus:ring-primary/30 focus:border-primary disabled:opacity-60"
                   />
                 </div>
 
@@ -121,17 +242,18 @@ export default function SettingsPage() {
                     <input
                       type="text"
                       value={config.model}
+                      disabled={isLoading}
                       onChange={(e) =>
-                        setProviderConfig(p.key, "model", e.target.value)
+                        updateProviderConfig(p.key, "model", e.target.value)
                       }
-                      placeholder="模型名称"
+                      placeholder={p.defaultModel}
                       className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text
                                  placeholder:text-text-muted focus:outline-none focus:ring-2
-                                 focus:ring-primary/30 focus:border-primary"
+                                 focus:ring-primary/30 focus:border-primary disabled:opacity-60"
                     />
                     {p.key === "openai" && (
                       <p className="text-[11px] text-text-muted mt-1">
-                        官方接口建议先用 `gpt-4.1`；如代理已兼容，再切换到其他模型。
+                        默认已预填你的代理配置，可按代理兼容情况改成其他模型。
                       </p>
                     )}
                   </div>
@@ -143,13 +265,14 @@ export default function SettingsPage() {
                     <input
                       type="text"
                       value={config.baseUrl}
+                      disabled={isLoading}
                       onChange={(e) =>
-                        setProviderConfig(p.key, "baseUrl", e.target.value)
+                        updateProviderConfig(p.key, "baseUrl", e.target.value)
                       }
                       placeholder={p.defaultBaseUrl}
                       className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text
                                  placeholder:text-text-muted focus:outline-none focus:ring-2
-                                 focus:ring-primary/30 focus:border-primary"
+                                 focus:ring-primary/30 focus:border-primary disabled:opacity-60"
                     />
                   </div>
                 </div>
@@ -160,17 +283,18 @@ export default function SettingsPage() {
                   </label>
                   <select
                     value={config.wireApi || "chat"}
+                    disabled={isLoading}
                     onChange={(e) =>
-                      setProviderConfig(p.key, "wireApi", e.target.value)
+                      updateProviderConfig(p.key, "wireApi", e.target.value)
                     }
                     className="w-full bg-bg border border-border rounded-lg px-3 py-2 text-sm text-text
-                               focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary"
+                               focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary disabled:opacity-60"
                   >
+                    <option value="responses">Responses API（默认代理）</option>
                     <option value="chat">Chat Completions（标准）</option>
-                    <option value="responses">Responses API（代理常用）</option>
                   </select>
                   <p className="text-[11px] text-text-muted mt-1">
-                    如果使用 OpenAI 代理，通常选择「Responses API」
+                    你当前这类 OpenAI 兼容代理，通常优先选择「Responses API」。
                   </p>
                 </div>
               </div>
@@ -179,14 +303,37 @@ export default function SettingsPage() {
         })}
       </div>
 
+      <div
+        className={cn(
+          "mt-6 rounded-xl px-4 py-3 text-xs border",
+          saveState === "error"
+            ? "bg-red-500/5 border-red-500/20 text-red-600"
+            : saveState === "saved"
+              ? "bg-emerald-500/5 border-emerald-500/20 text-emerald-700"
+              : "bg-bg-sidebar border-border text-text-muted"
+        )}
+      >
+        {saveMessage ||
+          (isDirty
+            ? "当前修改尚未写入本地加密存储，点击“保存设置”后才会生效。"
+            : "当前显示的是已保存配置。")}
+      </div>
+
       {/* Info */}
       <div className="mt-6 bg-bg-sidebar rounded-xl px-4 py-3 text-xs text-text-muted">
         <p>
-          API Key 仅存储在浏览器本地（localStorage），不会上传到任何服务器。
+          API Key 与模型配置会在你点击“保存设置”后，使用本地加密再写入当前浏览器。
         </p>
         <p className="mt-1">
-          Kimi 和 DeepSeek 兼容 OpenAI API
-          格式，只需填入对应的 Key 和 Base URL 即可使用。
+          OpenAI / 代理默认预填 `gpt-5.4`、`https://gmn.chuangzuoli.com`
+          和 `Responses API`。
+        </p>
+        <p className="mt-1">
+          Kimi 和 DeepSeek 也兼容 OpenAI API 格式，只需填入对应的 Key 和
+          Base URL 即可使用。
+        </p>
+        <p className="mt-1">
+          如果你切换到不同端口的 localhost，浏览器会把它视为不同站点，因此配置不会自动共享。
         </p>
       </div>
     </div>

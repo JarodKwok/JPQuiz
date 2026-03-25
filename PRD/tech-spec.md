@@ -1,333 +1,466 @@
 # 技术方案文档
 
-## 一、技术栈选型
+## 一、技术栈
 
 | 层级 | 技术选型 | 说明 |
 | --- | --- | --- |
-| **前端框架** | Next.js 14 (App Router) + TypeScript | SSR/SSG 支持，路由内置，生态成熟 |
-| **UI 组件库** | shadcn/ui + Radix UI | 高质量无样式原语组件，完全可定制 |
-| **样式方案** | Tailwind CSS | 高效开发，与 shadcn/ui 天然配合 |
-| **状态管理** | Zustand | 轻量、TS 友好，适合中小型应用 |
-| **本地存储** | IndexedDB（via Dexie.js） | 浏览器端结构化存储，存学习进度、掌握状态、错题 |
-| **AI 模型调用** | 统一抽象层 + 可配置 Provider | 见下方详细设计 |
-| **TTS 语音合成** | Web Speech API（本地）/ 云端 TTS API | P2 阶段再接入高质量日语 TTS |
-| **部署** | Cloudflare Pages | 无限带宽，全球 CDN，国内访问友好 |
+| 前端框架 | Next.js 16 + React 19 + TypeScript | App Router，适合结构化页面与客户端交互 |
+| 状态管理 | Zustand | 保存当前课次、当前专题、AI 设置 |
+| 样式方案 | Tailwind CSS 4 | 快速构建专题页和题型 UI |
+| 本地数据库 | IndexedDB（Dexie） | 保存内容缓存、掌握状态、错题、测验记录 |
+| AI 调用 | OpenAI 兼容 Provider 抽象层 | 支持 OpenAI / Kimi / DeepSeek |
+| 测试 | Vitest | 覆盖解析、进度统计、测验服务 |
 
 ---
 
-## 二、AI 模型抽象层设计（核心）
+## 二、系统架构
 
-### 2.1 设计目标
+### 2.1 分层结构
 
-- API Key 可配置，用户可在设置页面填入自己的 Key
-- 模型 Provider 可切换，无需改代码
-- 新增模型供应商只需实现统一接口
+```text
+页面层
+├─ 专题页（单词/语法/课文/例句/听力）
+├─ 学习记录页
+└─ AI 问答面板
 
-### 2.2 架构设计
+组件层
+├─ Study UI（现有学习内容）
+├─ ModuleModeTabs
+├─ ModuleQuizPanel
+└─ StructuredQuiz
 
-```
-┌─────────────────────────────────────┐
-│           App 业务层                 │
-│  (单词学习 / 语法 / 课文 / 出题)     │
-└──────────────┬──────────────────────┘
-               │ 调用统一接口
-               ▼
-┌─────────────────────────────────────┐
-│        AIService (抽象层)            │
-│  - chat(messages, options)          │
-│  - stream(messages, options)        │
-│  - getModels()                      │
-└──────────────┬──────────────────────┘
-               │ 根据配置分发
-        ┌──────┼──────┐
-        ▼      ▼      ▼
-   ┌────────┐┌─────┐┌────────┐
-   │ OpenAI ││Kimi ││DeepSeek│  ← 各 Provider 实现
-   │Adapter ││Adapt││Adapter │
-   └────────┘└─────┘└────────┘
+服务层
+├─ content.ts        学习内容获取与缓存
+├─ quiz.ts           目标识别 / AI 组卷 / 本地判题 / 测验持久化
+├─ progress.ts       学习统计
+├─ progress-insights.ts  AI 学情总结
+├─ mastery.ts        掌握状态
+└─ wrongAnswers.ts   错题记录
+
+存储层
+└─ Dexie / IndexedDB
 ```
 
-### 2.3 统一接口定义
+### 2.2 双模式专题页
 
-```typescript
-// types/ai.ts
-export interface AIMessage {
-  role: 'system' | 'user' | 'assistant';
-  content: string;
-}
+每个专题页统一分为：
 
-export interface AIRequestOptions {
-  temperature?: number;
-  maxTokens?: number;
-  stream?: boolean;
-}
+- `study`：保留原学习内容
+- `quiz`：进入智能组卷与答题流程
 
-export interface AIResponse {
-  content: string;
-  usage?: { promptTokens: number; completionTokens: number };
-}
-
-export interface AIProvider {
-  name: string;
-  chat(messages: AIMessage[], options?: AIRequestOptions): Promise<AIResponse>;
-  stream(messages: AIMessage[], options?: AIRequestOptions): AsyncIterable<string>;
-}
-
-// 模型配置
-export interface AIModelConfig {
-  provider: 'openai' | 'kimi' | 'deepseek';
-  model: string;       // 具体模型名，如 "gpt-5.4", "moonshot-v1-8k", "deepseek-chat"
-  apiKey: string;
-  baseUrl?: string;     // 可选，自定义 API 地址
-}
-```
-
-### 2.4 API Key 安全说明
-
-由于是纯前端 Web 应用，API Key 存储在浏览器 localStorage 中，仅在客户端使用。
-
-- **直连模式（MVP）**：前端直接调用 AI 供应商 API，需供应商支持 CORS
-- **代理模式（推荐）**：通过 Next.js API Route (`/api/ai/chat`) 代理转发请求，API Key 存在服务端环境变量中，更安全
-
-```typescript
-// 配置持久化存储在 localStorage
-{
-  "ai": {
-    "activeProvider": "openai",
-    "providers": {
-      "openai": {
-        "apiKey": "sk-xxx",
-        "model": "gpt-5.4",
-        "baseUrl": "https://api.openai.com/v1"
-      },
-      "kimi": {
-        "apiKey": "sk-xxx",
-        "model": "moonshot-v1-8k",
-        "baseUrl": "https://api.moonshot.cn/v1"
-      },
-      "deepseek": {
-        "apiKey": "sk-xxx",
-        "model": "deepseek-chat",
-        "baseUrl": "https://api.deepseek.com/v1"
-      }
-    }
-  }
-}
-```
-
-> **说明**：Kimi 和 DeepSeek 均兼容 OpenAI API 格式，实际 Provider 实现可复用 OpenAI Adapter，只需切换 `baseUrl` 和 `model`。
+专题页不复用底部 AI 对话框作为正式测验入口。
 
 ---
 
-## 三、数据存储方案
+## 三、AI 能力拆分
 
-### 3.1 IndexedDB 数据结构（via Dexie.js）
+### 3.1 学习内容生成
 
-```typescript
-// db.ts
-import Dexie, { type Table } from 'dexie';
+由 `getModuleContent()` 负责：
 
+- 按 `lessonId + module` 生成学习内容
+- 使用内容缓存表 `contentCache`
+- 返回结构化 JSON
+
+### 3.2 目标识别
+
+由 `resolveQuizTargets()` 负责：
+
+- 输入：当前课次、当前专题、用户自然语言目标
+- 结合当前专题候选知识点进行识别
+- 支持中文 / 日文 / 假名 / 句子片段
+- 输出：已识别的目标列表
+
+### 3.3 智能组卷
+
+由 `generateModuleQuiz()` 负责：
+
+- 输入：课次、专题、题型、来源、题量、已识别目标
+- 使用专用 Quiz Prompt
+- 输出：严格结构化的测验 JSON
+
+### 3.4 AI 学情总结
+
+由 `generateProgressInsight()` 负责：
+
+- 输入：结构化学习统计数据
+- 输出：中文学习点评
+
+---
+
+## 四、数据模型
+
+## Important changes or additions to public APIs/interfaces/types
+
+### 4.1 学习相关数据
+
+```ts
 interface LearningProgress {
-  id?: number;
-  lessonId: number;          // 课次编号 (1-25)
-  module: 'vocabulary' | 'grammar' | 'text' | 'example' | 'listening';
-  masteryPercent: number;     // 熟练度百分比
+  lessonId: number;
+  module: Module;
+  masteryPercent: number;
+  totalItems?: number;
   lastStudiedAt?: string;
   updatedAt: string;
 }
+```
 
+```ts
 interface MasteryStatus {
-  id?: number;
   lessonId: number;
-  module: string;
-  itemKey: string;            // 知识点标识 (如单词原文、语法编号)
-  status: 'mastered' | 'fuzzy' | 'weak' | 'new';
+  module: Module;
+  itemKey: string;
+  status: "mastered" | "fuzzy" | "weak" | "new";
   reviewCount: number;
   lastReviewedAt?: string;
   createdAt: string;
 }
+```
 
+```ts
 interface WrongAnswer {
-  id?: number;
   lessonId: number;
-  module: string;
+  module: Module;
   question: string;
   userAnswer?: string;
   correctAnswer: string;
   errorReason?: string;
-  status: 'mastered' | 'weak';
+  status: "mastered" | "weak";
+  questionType?: QuizQuestionType;
+  sourceType?: QuizSourceType;
+  knowledgeKeys?: string[];
   createdAt: string;
 }
+```
 
-interface StudySession {
-  id?: number;
-  date: string;               // YYYY-MM-DD
-  durationSeconds: number;
-  module?: string;
-  lessonId?: number;
+### 4.2 测验题型
+
+```ts
+type QuizQuestionType = "multiple_choice" | "fill_blank" | "translation";
+type QuizSourceType = "random_scope" | "manual_targets" | "weak_items" | "mixed";
+```
+
+```ts
+interface QuizResolvedTarget {
+  key: string;
+  label: string;
+  module: Module;
+  lessonId: number;
+  matchedFrom?: string;
+  sourceKinds?: string[];
+  excerpt?: string;
 }
+```
 
-class JPQuizDB extends Dexie {
-  learningProgress!: Table<LearningProgress>;
-  masteryStatus!: Table<MasteryStatus>;
-  wrongAnswers!: Table<WrongAnswer>;
-  studySessions!: Table<StudySession>;
+```ts
+interface MultipleChoiceQuestion {
+  id: number;
+  type: "multiple_choice";
+  prompt: string;
+  options: string[];
+  correctIndex: number;
+  knowledgeKeys?: string[];
+  explanation?: string;
+}
+```
 
-  constructor() {
-    super('jpquiz');
-    this.version(1).stores({
-      learningProgress: '++id, lessonId, module',
-      masteryStatus: '++id, lessonId, module, status',
-      wrongAnswers: '++id, lessonId, module, status',
-      studySessions: '++id, date, module',
-    });
+```ts
+interface FillBlankQuestion {
+  id: number;
+  type: "fill_blank";
+  prompt: string;
+  answer: string;
+  acceptedAnswers?: string[];
+  placeholder?: string;
+  knowledgeKeys?: string[];
+  explanation?: string;
+}
+```
+
+```ts
+interface TranslationQuestion {
+  id: number;
+  type: "translation";
+  prompt: string;
+  direction: "zh-to-ja" | "ja-to-zh";
+  answer: string;
+  acceptedAnswers?: string[];
+  placeholder?: string;
+  knowledgeKeys?: string[];
+  explanation?: string;
+}
+```
+
+```ts
+type QuizQuestion =
+  | MultipleChoiceQuestion
+  | FillBlankQuestion
+  | TranslationQuestion;
+```
+
+```ts
+interface QuizData {
+  title: string;
+  lessonId?: number;
+  module?: Module;
+  sourceType?: QuizSourceType;
+  questionType?: QuizQuestionType;
+  count?: number;
+  resolvedTargets?: Array<{ key: string; label: string }>;
+  questions: QuizQuestion[];
+}
+```
+
+### 4.3 测验会话
+
+```ts
+interface QuizResult {
+  questionId: number;
+  questionType: QuizQuestionType;
+  isCorrect: boolean;
+  userAnswer: string | number | null;
+  correctAnswer: string;
+  explanation?: string;
+  knowledgeKeys: string[];
+}
+```
+
+```ts
+interface QuizSessionRecord {
+  title: string;
+  lessonId: number;
+  module: Module;
+  sourceType: QuizSourceType;
+  questionType: QuizQuestionType;
+  totalQuestions: number;
+  correctCount: number;
+  accuracy: number;
+  targetLabels?: string[];
+  results: Array<QuizResult & { prompt: string }>;
+  createdAt: string;
+}
+```
+
+---
+
+## 五、Dexie 表结构
+
+当前数据库版本升级到 `v4`，包含：
+
+```ts
+learningProgress: "++id, lessonId, module, updatedAt"
+masteryStatus: "++id, lessonId, module, status, [lessonId+module+itemKey]"
+wrongAnswers: "++id, lessonId, module, status"
+studySessions: "++id, date, module"
+contentCache: "++id, [lessonId+module], updatedAt"
+quizSessions: "++id, lessonId, module, questionType, sourceType, createdAt"
+```
+
+---
+
+## 六、组卷与答题流程
+
+### 6.1 目标候选池
+
+`buildQuizTargetCandidates()` 会基于当前专题内容构建候选知识点：
+
+- 单词：以单词为单位
+- 语法：以语法点为单位
+- 课文：以句子为单位（掌握映射回整篇课文）
+- 例句：以例句为单位
+- 听力：以听力题为单位
+
+### 6.2 目标识别流程
+
+```text
+用户输入自然语言目标
+→ 构建当前专题候选池
+→ 先做本地匹配兜底
+→ 调用 AI 目标识别 Prompt
+→ 过滤为当前候选池中的合法 key
+→ 返回已识别目标
+```
+
+### 6.3 组卷流程
+
+```text
+选择来源 + 题型 + 题量
+→ 获取当前候选池 / 薄弱池 / 已识别目标
+→ 调用 AI Quiz Prompt
+→ 解析结构化 JSON
+→ 修正缺失的 knowledgeKeys
+→ 渲染题目 UI
+```
+
+### 6.4 提交流程
+
+```text
+用户完成答题
+→ 本地判题
+→ 生成 QuizSubmission
+→ 写入 quizSessions
+→ 更新 masteryStatus
+→ 写入 wrongAnswers（若答错）
+→ 重新同步 learningProgress
+→ 学习记录页统计更新
+```
+
+---
+
+## 七、本地判题规则
+
+### 7.1 选择题
+
+```ts
+selectedIndex === correctIndex
+```
+
+### 7.2 填空题 / 翻译题
+
+统一使用 `normalizeQuizTextAnswer()` 进行文本规范化：
+
+- `trim()`
+- `NFKC` 归一化
+- 小写化
+- 移除空格
+- 移除常见中英文标点
+
+再与：
+
+- `answer`
+- `acceptedAnswers[]`
+
+做精确匹配。
+
+---
+
+## 八、页面状态与组件设计
+
+### 8.1 组件
+
+- `ModuleModeTabs`
+- `ModuleQuizPanel`
+- `StructuredQuiz`
+- 现有学习内容组件/页面
+
+### 8.2 关键页面状态
+
+```ts
+mode: "study" | "quiz"
+sourceType: QuizSourceType
+questionType: QuizQuestionType
+count: number
+targetInput: string
+resolvedTargets: QuizResolvedTarget[]
+quiz: QuizData | null
+feedback: string
+error: string
+```
+
+### 8.3 学习记录页新增能力
+
+`HistoryStats` 新增：
+
+- `totalQuizSessions`
+- `quizAccuracyByType`
+- `recentQuizSessions`
+
+并通过 `generateProgressInsight()` 调用 AI 总结统计结果。
+
+---
+
+## 九、Prompt Contract
+
+### 9.1 目标识别 Prompt 输出
+
+```json
+{
+  "targets": [
+    {
+      "key": "vocabulary:先生",
+      "matchedFrom": "老师"
+    }
+  ]
+}
+```
+
+实际实现中 `key` 必须来自当前专题候选池。
+
+### 9.2 组卷 Prompt 输出
+
+```json
+{
+  "type": "quiz",
+  "data": {
+    "title": "第5课 单词测验",
+    "lessonId": 5,
+    "module": "vocabulary",
+    "sourceType": "manual_targets",
+    "questionType": "multiple_choice",
+    "count": 5,
+    "questions": [
+      {
+        "id": 1,
+        "type": "multiple_choice",
+        "prompt": "「先生」的意思是？",
+        "options": ["老师", "学生", "银行", "朋友"],
+        "correctIndex": 0,
+        "knowledgeKeys": ["先生"],
+        "explanation": "先生表示老师。"
+      }
+    ]
   }
 }
 ```
 
-### 3.2 存储策略
+---
 
-- **MVP 阶段**：纯浏览器 IndexedDB，无需注册登录
-- **后续扩展**：接入 Supabase 实现云端同步 + 多设备支持，IndexedDB 作为离线缓存
+## 十、测试与验收
+
+## Test cases and scenarios
+
+### 10.1 单元测试
+
+当前自动化测试覆盖：
+
+- AI 路由工具解析
+- 内容解析
+- 进度计算
+- 测验候选构建
+- 本地目标匹配
+- 测验 payload 解析
+- 多题型本地判题
+
+### 10.2 端到端验收场景
+
+- 单词页可以在 `学习 / 测验` 之间切换
+- 在测验模式中可选 4 种组卷来源
+- 指定目标支持中文 / 日文输入
+- 系统会先展示已识别目标，再生成题目
+- 三类题型都以原生 UI 表单呈现
+- 提交后立即展示结果与解析
+- 错题、薄弱项、模块进度会同步更新
+- 学习记录页能展示测验场次、题型正确率、最近测验
+- 学习记录页可生成 AI 学情点评
+
+### 10.3 边界场景
+
+- 指定目标识别失败
+- 当前无薄弱项却选择“薄弱项组卷”
+- AI 返回题量不足
+- AI 返回不合法 JSON
+- 切换课次后旧测验题目失效
+- 重新生成题目后旧答案被清空
 
 ---
 
-## 四、课次范围明确
+## 十一、兼容性与默认策略
 
-《大家的日语》初级 I（第 1 ~ 25 课）覆盖 N5 核心内容，**MVP 版本支持第 1 ~ 25 课**。
+## Explicit assumptions and defaults chosen
 
----
-
-## 五、Web 端页面布局
-
-### 5.1 桌面端（≥ 1024px）
-
-```
-┌─────────────────────────────────────────────────────────┐
-│  顶部导航栏：Logo + 课次选择 + 进度概览 + 设置齿轮       │
-├────────────┬────────────────────────────────────────────┤
-│            │                                            │
-│  左侧边栏   │              主内容区                      │
-│  (240px)   │     (学习内容 / 练习 / AI 对话)             │
-│            │                                            │
-│  · 单词    │                                            │
-│  · 语法    │                                            │
-│  · 课文    │                                            │
-│  · 例句    │                                            │
-│  · 听力    │                                            │
-│  ─────── │                                            │
-│  · 薄弱本  │                                            │
-│  · 学习记录 │                                            │
-│            ├────────────────────────────────────────────┤
-│            │  AI 交互输入栏（固定底部）                    │
-├────────────┴────────────────────────────────────────────┤
-```
-
-### 5.2 移动端（< 768px）
-
-- 左侧边栏收起为汉堡菜单（点击展开 overlay）
-- 主内容区全屏宽
-- AI 输入栏固定底部
-- 课次选择改为下拉 Select
-
----
-
-## 六、路由设计
-
-```
-/                       → 首页（重定向到上次学习模块）
-/vocabulary?lesson=3    → 单词学习（第 3 课）
-/grammar?lesson=5       → 语法精讲（第 5 课）
-/text?lesson=2          → 课文学习（第 2 课）
-/examples?lesson=4      → 例句练习（第 4 课）
-/listening?lesson=1     → 听力训练（第 1 课）
-/weak-points            → 薄弱 / 错题本
-/history                → 学习记录
-/settings               → 设置页（AI Provider / API Key / Model 配置）
-```
-
----
-
-## 七、AI 响应策略
-
-| 场景 | 策略 |
-| --- | --- |
-| 内容生成（单词列表、语法讲解） | **流式输出（stream）**，首 token ≤ 1s，逐步渲染 |
-| 练习题出题 | 流式输出，题目逐题显示 |
-| 掌握状态标记 | 纯本地操作，无需 AI 调用 |
-| 指令解析失败 | 返回预设引导提示，给出指令示例 |
-
----
-
-## 八、项目目录结构
-
-```
-JPQuiz/
-├── src/
-│   ├── app/                     # Next.js App Router
-│   │   ├── layout.tsx           # 根布局（侧边栏 + 顶栏 + AI 输入栏）
-│   │   ├── page.tsx             # 首页（重定向）
-│   │   ├── vocabulary/
-│   │   │   └── page.tsx         # 单词学习
-│   │   ├── grammar/
-│   │   │   └── page.tsx         # 语法精讲
-│   │   ├── text/
-│   │   │   └── page.tsx         # 课文学习
-│   │   ├── examples/
-│   │   │   └── page.tsx         # 例句练习
-│   │   ├── listening/
-│   │   │   └── page.tsx         # 听力训练
-│   │   ├── weak-points/
-│   │   │   └── page.tsx         # 薄弱 / 错题本
-│   │   ├── history/
-│   │   │   └── page.tsx         # 学习记录
-│   │   ├── settings/
-│   │   │   └── page.tsx         # 设置页
-│   │   └── api/
-│   │       └── ai/
-│   │           └── chat/
-│   │               └── route.ts # AI 代理接口（流式转发）
-│   ├── components/
-│   │   ├── layout/
-│   │   │   ├── Sidebar.tsx      # 左侧边栏
-│   │   │   ├── TopNav.tsx       # 顶部导航栏
-│   │   │   └── AIInputBar.tsx   # AI 交互输入栏
-│   │   ├── lesson/
-│   │   │   ├── LessonSelector.tsx
-│   │   │   └── MasteryButtons.tsx
-│   │   └── ui/                  # shadcn/ui 组件
-│   ├── services/
-│   │   ├── ai/
-│   │   │   ├── types.ts         # AI 接口类型定义
-│   │   │   ├── provider.ts      # AIService 抽象层
-│   │   │   └── openai-adapter.ts # OpenAI 兼容 adapter（通用）
-│   │   ├── db.ts                # Dexie.js IndexedDB 封装
-│   │   └── prompts.ts           # System prompt 模板
-│   ├── stores/
-│   │   ├── lessonStore.ts
-│   │   ├── progressStore.ts
-│   │   └── settingsStore.ts
-│   └── types/
-│       └── index.ts
-├── public/
-├── PRD/
-├── tailwind.config.ts
-├── next.config.ts
-├── tsconfig.json
-└── package.json
-```
-
----
-
-## 九、MVP 范围（P0）
-
-| 功能 | 说明 |
-| --- | --- |
-| 课次选择 | 第 1-25 课，单课选择 |
-| 单词学习 | 查看模式 + 选择题模式 + 掌握标记 |
-| 语法精讲 | 语法列表 + 详情 + 基础练习题 |
-| 课文学习 | 课文展示 + 对照翻译 |
-| AI 交互 | 文字输入指令，流式输出响应 |
-| 进度跟踪 | IndexedDB 记录，状态栏展示 |
-| 设置页 | AI Provider / API Key / Model 配置 |
-| 响应式 | 桌面端侧边栏布局，移动端汉堡菜单适配 |
+- 正式测验入口固定在专题页内部
+- 底部 AI 输入栏继续保留自由问答职责
+- 听力首版采用文本 / TTS 辅助，不引入独立音频资源管理
+- 翻译题首版采用规则匹配，不做开放式语义评分
+- 课文题目以句子粒度出题，但掌握状态回写到整篇课文
+- 若 AI 未返回 `knowledgeKeys`，系统使用当前主题源池做兜底映射

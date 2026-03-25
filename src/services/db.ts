@@ -6,6 +6,7 @@ import type {
   StudySession,
   Module,
 } from "@/types";
+import type { QuizSessionRecord } from "@/types/quiz";
 
 /** AI 生成内容的缓存 */
 export interface ContentCache {
@@ -24,6 +25,7 @@ class JPQuizDB extends Dexie {
   wrongAnswers!: Table<WrongAnswer>;
   studySessions!: Table<StudySession>;
   contentCache!: Table<ContentCache>;
+  quizSessions!: Table<QuizSessionRecord>;
 
   constructor() {
     super("jpquiz");
@@ -33,6 +35,14 @@ class JPQuizDB extends Dexie {
       wrongAnswers: "++id, lessonId, module, status",
       studySessions: "++id, date, module",
       contentCache: "++id, [lessonId+module], updatedAt",
+    });
+    this.version(4).stores({
+      learningProgress: "++id, lessonId, module, updatedAt",
+      masteryStatus: "++id, lessonId, module, status, [lessonId+module+itemKey]",
+      wrongAnswers: "++id, lessonId, module, status",
+      studySessions: "++id, date, module",
+      contentCache: "++id, [lessonId+module], updatedAt",
+      quizSessions: "++id, lessonId, module, questionType, sourceType, createdAt",
     });
   }
 }

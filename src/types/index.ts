@@ -1,3 +1,5 @@
+import type { QuizQuestionType, QuizSourceType } from "./quiz";
+
 // AI Types
 export interface AIMessage {
   role: "system" | "user" | "assistant";
@@ -70,6 +72,9 @@ export interface WrongAnswer {
   correctAnswer: string;
   errorReason?: string;
   status: "mastered" | "weak";
+  questionType?: QuizQuestionType;
+  sourceType?: QuizSourceType;
+  knowledgeKeys?: string[];
   createdAt: string;
 }
 

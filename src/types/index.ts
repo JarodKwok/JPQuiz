@@ -28,12 +28,15 @@ export interface AISettings {
 }
 
 // Learning Types
-export type Module =
-  | "vocabulary"
-  | "grammar"
-  | "text"
-  | "examples"
-  | "listening";
+export const MODULES = [
+  "vocabulary",
+  "grammar",
+  "text",
+  "examples",
+  "listening",
+] as const;
+
+export type Module = (typeof MODULES)[number];
 
 export type MasteryLevel = "mastered" | "fuzzy" | "weak" | "new";
 
@@ -42,6 +45,7 @@ export interface LearningProgress {
   lessonId: number;
   module: Module;
   masteryPercent: number;
+  totalItems?: number;
   lastStudiedAt?: string;
   updatedAt: string;
 }

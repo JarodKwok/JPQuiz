@@ -1,20 +1,63 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import Link from "next/link";
+import { useState, useEffect, useCallback } from "react";
 import { Menu } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 import { useLessonStore } from "@/stores/lessonStore";
+import { getLessonProgressSummary, getTodayStudyMinutes } from "@/services/progress";
+import { subscribeDataUpdated } from "@/services/events";
 
 interface TopNavProps {
   onMenuClick: () => void;
 }
 
 export default function TopNav({ onMenuClick }: TopNavProps) {
-  const { currentLesson, setCurrentLesson } = useLessonStore();
-  const [mounted, setMounted] = useState(false);
+  const router = useRouter();
+  const pathname = usePathname();
+  const { currentLesson, setCurrentLesson, hydrated } = useLessonStore();
+  const [todayMinutes, setTodayMinutes] = useState(0);
+  const [progress, setProgress] = useState({
+    vocabulary: 0,
+    grammar: 0,
+    text: 0,
+    listening: 0,
+  });
+
+  const loadStats = useCallback(async () => {
+    const [lessonSummary, today] = await Promise.all([
+      getLessonProgressSummary(currentLesson),
+      getTodayStudyMinutes(),
+    ]);
+
+    setProgress({
+      vocabulary: lessonSummary.vocabulary,
+      grammar: lessonSummary.grammar,
+      text: lessonSummary.text,
+      listening: lessonSummary.listening,
+    });
+    setTodayMinutes(today);
+  }, [currentLesson]);
 
   useEffect(() => {
-    setMounted(true);
-  }, []);
+    if (!hydrated) return;
+
+    queueMicrotask(() => {
+      void loadStats();
+    });
+    return subscribeDataUpdated(() => {
+      void loadStats();
+    });
+  }, [hydrated, loadStats]);
+
+  const handleLessonChange = (lesson: number) => {
+    setCurrentLesson(lesson);
+    const params = new URLSearchParams(
+      typeof window === "undefined" ? "" : window.location.search
+    );
+    params.set("lesson", String(lesson));
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
 
   return (
     <header className="h-14 border-b border-border bg-bg-card flex items-center px-4 gap-4 shrink-0">
@@ -26,12 +69,16 @@ export default function TopNav({ onMenuClick }: TopNavProps) {
         <Menu size={20} />
       </button>
 
+      <div className="hidden lg:flex items-center gap-2 min-w-0">
+        <span className="text-sm font-semibold text-text">日语 N5 AI 辅导助手</span>
+      </div>
+
       {/* Lesson selector */}
       <div className="flex items-center gap-2">
         <span className="text-xs text-text-muted hidden sm:inline">课次</span>
         <select
-          value={mounted ? currentLesson : 1}
-          onChange={(e) => setCurrentLesson(Number(e.target.value))}
+          value={hydrated ? currentLesson : 1}
+          onChange={(e) => handleLessonChange(Number(e.target.value))}
           suppressHydrationWarning
           className="bg-bg border border-border rounded-lg px-3 py-1.5 text-sm text-text
                      focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary
@@ -48,21 +95,20 @@ export default function TopNav({ onMenuClick }: TopNavProps) {
       {/* Spacer */}
       <div className="flex-1" />
 
-      {/* Progress indicator (placeholder) */}
-      <div className="hidden sm:flex items-center gap-3 text-xs text-text-muted">
-        <div className="flex items-center gap-1.5">
-          <div className="w-2 h-2 rounded-full bg-mastered" />
-          <span>已掌握</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-2 h-2 rounded-full bg-fuzzy" />
-          <span>模糊</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-2 h-2 rounded-full bg-weak" />
-          <span>薄弱</span>
-        </div>
+      <div className="hidden md:flex items-center gap-3 text-xs text-text-muted">
+        <span>单词 {progress.vocabulary}%</span>
+        <span>语法 {progress.grammar}%</span>
+        <span>课文 {progress.text}%</span>
+        <span>听力 {progress.listening}%</span>
+        <span>今日 {todayMinutes} 分</span>
       </div>
+
+      <Link
+        href="/weak-points"
+        className="hidden sm:inline-flex text-xs px-3 py-1.5 rounded-lg border border-border text-text-secondary hover:border-primary/40 hover:text-primary transition-colors"
+      >
+        复习薄弱
+      </Link>
     </header>
   );
 }

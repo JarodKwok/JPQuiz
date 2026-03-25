@@ -1,107 +1,86 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Volume2, Eye, EyeOff } from "lucide-react";
-import { useLessonStore } from "@/stores/lessonStore";
-
-interface TextLine {
-  japanese: string;
-  translation: string;
-  notes?: string;
-}
-
-const MOCK_TEXT: Record<number, { title: string; lines: TextLine[] }> = {
-  1: {
-    title: "自己紹介（自我介绍）",
-    lines: [
-      { japanese: "ミラー：はじめまして。", translation: "米勒：初次见面。" },
-      {
-        japanese: "ミラー：わたしは マイク・ミラーです。",
-        translation: "米勒：我是迈克·米勒。",
-      },
-      {
-        japanese: "ミラー：アメリカから 来ました。",
-        translation: "米勒：我从美国来。",
-      },
-      {
-        japanese: "ミラー：どうぞ よろしく お願いします。",
-        translation: "米勒：请多关照。",
-      },
-      {
-        japanese: "サントス：わたしは サントスです。",
-        translation: "桑托斯：我是桑托斯。",
-      },
-      {
-        japanese: "サントス：ブラジルから 来ました。",
-        translation: "桑托斯：我从巴西来。",
-      },
-      {
-        japanese: "サントス：どうぞ よろしく お願いします。",
-        translation: "桑托斯：请多关照。",
-      },
-    ],
-  },
-  2: {
-    title: "買い物（购物）",
-    lines: [
-      {
-        japanese: "ミラー：すみません。それは 何ですか。",
-        translation: "米勒：请问，那是什么？",
-      },
-      {
-        japanese: "店員：これですか。これは 携帯電話です。",
-        translation: "店员：这个吗？这是手机。",
-      },
-      {
-        japanese: "ミラー：それは ミラーさんのですか。",
-        translation: "米勒：那是米勒先生的吗？",
-      },
-      {
-        japanese: "佐藤：いいえ、わたしのじゃ ありません。",
-        translation: "佐藤：不，不是我的。",
-      },
-    ],
-  },
-};
+import { useState, useEffect, useCallback } from "react";
+import { Volume2, Eye, EyeOff, Loader2, RefreshCw } from "lucide-react";
+import MasteryButtons from "@/components/lesson/MasteryButtons";
+import { useModulePage } from "@/hooks/useModulePage";
+import { useStudySession } from "@/hooks/useStudySession";
+import { getModuleContent } from "@/services/content";
+import { getMasteryMap, saveMastery } from "@/services/mastery";
+import { syncLearningProgress } from "@/services/progress";
+import type { MasteryLevel } from "@/types";
+import type { TextContent } from "@/types/content";
 
 export default function TextPage() {
-  const { currentLesson } = useLessonStore();
-  const [textData, setTextData] = useState<{
-    title: string;
-    lines: TextLine[];
-  } | null>(null);
+  const { currentLesson } = useModulePage("text");
+  useStudySession("text", currentLesson);
+
+  const [textData, setTextData] = useState<TextContent | null>(null);
   const [showTranslation, setShowTranslation] = useState(true);
+  const [mastery, setMastery] = useState<MasteryLevel | undefined>();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [source, setSource] = useState<"cache" | "ai" | null>(null);
+
+  const masteryItemKey = `text:${currentLesson}`;
+
+  const loadText = useCallback(
+    async (forceRefresh = false) => {
+      setLoading(true);
+      setError("");
+
+      try {
+        const response = await getModuleContent({
+          lessonId: currentLesson,
+          module: "text",
+          forceRefresh,
+        });
+        const masteryMap = await getMasteryMap(currentLesson, "text");
+
+        setTextData(response.data);
+        setMastery(masteryMap[masteryItemKey] as MasteryLevel | undefined);
+        setSource(response.source);
+        await syncLearningProgress(currentLesson, "text", response.data, masteryMap);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "课文内容加载失败。");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [currentLesson, masteryItemKey]
+  );
 
   useEffect(() => {
-    setTextData(MOCK_TEXT[currentLesson] || MOCK_TEXT[1] || null);
-  }, [currentLesson]);
+    void loadText();
+  }, [loadText]);
 
   const speak = (text: string) => {
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = "ja-JP";
       utterance.rate = 0.8;
+      speechSynthesis.cancel();
       speechSynthesis.speak(utterance);
     }
   };
 
   const speakAll = () => {
     if (!textData) return;
-    const fullText = textData.lines.map((l) => l.japanese).join("\n");
-    speak(fullText);
+    speak(textData.lines.map((line) => line.japanese).join("\n"));
   };
 
-  if (!textData) {
-    return (
-      <div className="text-center py-12 text-text-muted text-sm">
-        暂无第 {currentLesson} 課的课文数据
-      </div>
-    );
-  }
+  const handleMastery = async (level: MasteryLevel) => {
+    if (!textData) return;
+
+    setMastery(level);
+    await saveMastery(currentLesson, "text", masteryItemKey, level);
+    const masteryMap = await getMasteryMap(currentLesson, "text");
+    await syncLearningProgress(currentLesson, "text", textData, masteryMap);
+  };
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-6 gap-4">
         <div>
           <h1 className="text-lg font-semibold text-text">
             课文学习
@@ -110,7 +89,13 @@ export default function TextPage() {
             </span>
           </h1>
           <p className="text-xs text-text-muted mt-1">
-            第 {currentLesson} 課 · {textData.title}
+            第 {currentLesson} 課
+            {textData?.title ? ` · ${textData.title}` : ""}
+            {source && (
+              <span className="ml-2">
+                · {source === "cache" ? "缓存内容" : "AI 生成"}
+              </span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -124,41 +109,93 @@ export default function TextPage() {
           </button>
           <button
             onClick={speakAll}
+            disabled={!textData}
             className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-border
                        text-text-secondary hover:border-primary/40 hover:text-primary transition-colors"
           >
             <Volume2 size={14} />
             朗读全文
           </button>
+          <button
+            onClick={() => void loadText(true)}
+            disabled={loading}
+            className="p-1.5 rounded-lg border border-border text-text-secondary
+                       hover:border-primary/40 hover:text-primary transition-colors"
+          >
+            {loading ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <RefreshCw size={16} />
+            )}
+          </button>
         </div>
       </div>
 
-      <div className="bg-bg-card border border-border rounded-xl divide-y divide-border">
-        {textData.lines.map((line, index) => (
-          <div
-            key={index}
-            className="px-4 py-3 flex items-start gap-3 hover:bg-bg-sidebar/30 transition-colors group"
+      {!loading && error && (
+        <div className="bg-bg-card border border-border rounded-xl p-6 text-sm text-text-secondary">
+          <p>{error}</p>
+          <button
+            onClick={() => void loadText(true)}
+            className="mt-3 text-xs px-3 py-1.5 rounded-lg border border-border hover:border-primary/40 hover:text-primary transition-colors"
           >
-            <button
-              onClick={() => speak(line.japanese)}
-              className="mt-0.5 p-1 rounded hover:bg-primary/10 text-text-muted
-                         hover:text-primary transition-colors opacity-0 group-hover:opacity-100"
-            >
-              <Volume2 size={14} />
-            </button>
-            <div className="flex-1">
-              <p className="text-sm text-text leading-relaxed">
-                {line.japanese}
+            重试
+          </button>
+        </div>
+      )}
+
+      {loading && (
+        <div className="flex justify-center py-12">
+          <Loader2 size={24} className="animate-spin text-primary" />
+        </div>
+      )}
+
+      {!loading && !error && textData && (
+        <div className="space-y-4">
+          <div className="bg-bg-card border border-border rounded-xl p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm text-text">这篇课文掌握得怎么样？</p>
+              <p className="text-xs text-text-muted mt-1">
+                标记后会同步更新进度与薄弱项统计
               </p>
-              {showTranslation && (
-                <p className="text-xs text-text-secondary mt-1">
-                  {line.translation}
-                </p>
-              )}
             </div>
+            <MasteryButtons
+              current={mastery}
+              onChange={(level) => void handleMastery(level)}
+              size="sm"
+            />
           </div>
-        ))}
-      </div>
+
+          <div className="bg-bg-card border border-border rounded-xl divide-y divide-border">
+            {textData.lines.map((line, index) => (
+              <div
+                key={`${line.japanese}-${index}`}
+                className="px-4 py-3 flex items-start gap-3 hover:bg-bg-sidebar/30 transition-colors group"
+              >
+                <button
+                  onClick={() => speak(line.japanese)}
+                  className="mt-0.5 p-1 rounded hover:bg-primary/10 text-text-muted
+                             hover:text-primary transition-colors opacity-0 group-hover:opacity-100"
+                >
+                  <Volume2 size={14} />
+                </button>
+                <div className="flex-1">
+                  <p className="text-sm text-text leading-relaxed">
+                    {line.japanese}
+                  </p>
+                  {showTranslation && (
+                    <p className="text-xs text-text-secondary mt-1">
+                      {line.translation}
+                    </p>
+                  )}
+                  {line.notes && (
+                    <p className="text-[11px] text-primary mt-1">{line.notes}</p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

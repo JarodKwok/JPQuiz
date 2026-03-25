@@ -8,7 +8,7 @@ const DEFAULT_SETTINGS: AISettings = {
   providers: {
     openai: {
       apiKey: "",
-      model: "gpt-5.4",
+      model: "gpt-4.1",
       baseUrl: "https://api.openai.com/v1",
       wireApi: "chat" as const,
     },
@@ -71,7 +71,25 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       const stored = localStorage.getItem("jpquiz-ai-settings");
       if (stored) {
         const parsed = JSON.parse(stored);
-        set({ ai: { ...DEFAULT_SETTINGS, ...parsed } });
+        const providers = {
+          ...DEFAULT_SETTINGS.providers,
+          ...(parsed.providers || {}),
+        };
+
+        if (providers.openai?.model === "gpt-5.4") {
+          providers.openai = {
+            ...providers.openai,
+            model: DEFAULT_SETTINGS.providers.openai.model,
+          };
+        }
+
+        set({
+          ai: {
+            ...DEFAULT_SETTINGS,
+            ...parsed,
+            providers,
+          },
+        });
       }
     } catch {
       // ignore parse errors

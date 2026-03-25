@@ -14,6 +14,7 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLessonStore } from "@/stores/lessonStore";
 
 const navItems = [
   { href: "/vocabulary", label: "单词", sublabel: "たんご", icon: BookOpen },
@@ -35,6 +36,7 @@ interface SidebarProps {
 
 export default function Sidebar({ open, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const { currentLesson } = useLessonStore();
 
   return (
     <>
@@ -87,7 +89,15 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
             return (
               <Link
                 key={item.href}
-                href={item.href}
+                href={
+                  item.href === "/vocabulary" ||
+                  item.href === "/grammar" ||
+                  item.href === "/text" ||
+                  item.href === "/examples" ||
+                  item.href === "/listening"
+                    ? `${item.href}?lesson=${currentLesson}`
+                    : item.href
+                }
                 onClick={onClose}
                 className={cn(
                   "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm mb-0.5",

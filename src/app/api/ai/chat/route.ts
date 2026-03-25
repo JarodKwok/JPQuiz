@@ -1,4 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
+import {
+  buildChatEndpoint,
+  buildResponsesEndpoint,
+  extractResponseEventContent,
+  extractResponsesContent,
+} from "@/services/ai/route-utils";
 
 export async function POST(req: NextRequest) {
   try {
@@ -38,9 +44,7 @@ async function handleChatCompletionsAPI(
   config: { apiKey: string; model: string },
   messages: { role: string; content: string }[]
 ) {
-  const endpoint = baseUrl.includes("/chat/completions")
-    ? baseUrl
-    : `${baseUrl}/chat/completions`;
+  const endpoint = buildChatEndpoint(baseUrl);
 
   const res = await fetch(endpoint, {
     method: "POST",
@@ -49,7 +53,7 @@ async function handleChatCompletionsAPI(
       Authorization: `Bearer ${config.apiKey}`,
     },
     body: JSON.stringify({
-      model: config.model || "gpt-4o",
+      model: config.model || "gpt-4.1",
       messages,
       temperature: 0.7,
       max_tokens: 2048,
@@ -75,9 +79,7 @@ async function handleResponsesAPI(
   config: { apiKey: string; model: string },
   messages: { role: string; content: string }[]
 ) {
-  const endpoint = baseUrl.includes("/responses")
-    ? baseUrl
-    : `${baseUrl}/v1/responses`;
+  const endpoint = buildResponsesEndpoint(baseUrl);
 
   // Convert chat messages to Responses API input format
   const input = messages
@@ -99,7 +101,7 @@ async function handleResponsesAPI(
       Authorization: `Bearer ${config.apiKey}`,
     },
     body: JSON.stringify({
-      model: config.model || "gpt-4o",
+      model: config.model || "gpt-4.1",
       instructions,
       input,
       stream: true,
@@ -133,6 +135,7 @@ async function handleResponsesAPI(
   const stream = new ReadableStream({
     async start(controller) {
       let buffer = "";
+      let hasStreamedText = false;
       try {
         while (true) {
           const { done, value } = await reader.read();
@@ -155,36 +158,13 @@ async function handleResponsesAPI(
               }
               try {
                 const parsed = JSON.parse(data);
-
-                // Handle different Responses API event types
-                let content = "";
-
-                // response.output_text.delta
-                if (parsed.type === "response.output_text.delta") {
-                  content = parsed.delta || "";
-                }
-                // response.content_part.delta (alternative format)
-                else if (parsed.type === "response.content_part.delta") {
-                  content = parsed.delta?.text || parsed.delta || "";
-                }
-                // response.completed - extract full text
-                else if (parsed.type === "response.completed") {
-                  const fullContent = extractResponsesContent(parsed.response);
-                  if (fullContent) content = fullContent;
-                }
-                // Fallback: try common delta paths
-                else if (parsed.delta) {
-                  content =
-                    typeof parsed.delta === "string"
-                      ? parsed.delta
-                      : parsed.delta.content || parsed.delta.text || "";
-                }
-                // Standard chat completions format (some proxies convert)
-                else if (parsed.choices?.[0]?.delta?.content) {
-                  content = parsed.choices[0].delta.content;
-                }
+                const content = extractResponseEventContent(
+                  parsed,
+                  hasStreamedText
+                );
 
                 if (content) {
+                  hasStreamedText = true;
                   const chatChunk = JSON.stringify({
                     choices: [{ delta: { content } }],
                   });
@@ -214,40 +194,6 @@ async function handleResponsesAPI(
       Connection: "keep-alive",
     },
   });
-}
-
-/** Extract text content from a Responses API response object */
-function extractResponsesContent(data: Record<string, unknown>): string {
-  if (!data) return "";
-
-  // data.output[].content[].text
-  const output = data.output as Array<{
-    type?: string;
-    content?: Array<{ type?: string; text?: string }>;
-  }>;
-  if (Array.isArray(output)) {
-    for (const item of output) {
-      if (item.type === "message" && Array.isArray(item.content)) {
-        const texts = item.content
-          .filter((c) => c.type === "output_text" || c.type === "text")
-          .map((c) => c.text || "");
-        if (texts.length) return texts.join("");
-      }
-    }
-  }
-
-  // Fallback: data.output_text
-  if (typeof data.output_text === "string") return data.output_text;
-
-  // Fallback: choices format
-  const choices = data.choices as Array<{
-    message?: { content?: string };
-  }>;
-  if (Array.isArray(choices) && choices[0]?.message?.content) {
-    return choices[0].message.content;
-  }
-
-  return "";
 }
 
 /** Create an SSE response from plain text */

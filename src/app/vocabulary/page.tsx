@@ -2,80 +2,84 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Volume2, RefreshCw, Loader2 } from "lucide-react";
-import { useLessonStore } from "@/stores/lessonStore";
-import { useSettingsStore } from "@/stores/settingsStore";
 import MasteryButtons from "@/components/lesson/MasteryButtons";
-import { saveMastery, getMasteryMap } from "@/services/mastery";
+import { useModulePage } from "@/hooks/useModulePage";
+import { useStudySession } from "@/hooks/useStudySession";
+import { getModuleContent } from "@/services/content";
+import { getMasteryMap, saveMastery } from "@/services/mastery";
+import { syncLearningProgress } from "@/services/progress";
 import type { MasteryLevel } from "@/types";
+import type { VocabularyItem } from "@/types/content";
 
-interface VocabWord {
-  word: string;
-  reading: string;
-  meaning: string;
-  example?: string;
+type VocabularyViewItem = VocabularyItem & {
   mastery?: MasteryLevel;
-}
-
-// Mock data for demo (AI will replace this)
-const MOCK_VOCAB: Record<number, VocabWord[]> = {
-  1: [
-    { word: "わたし", reading: "わたし", meaning: "我", example: "わたしは マイク・ミラーです。" },
-    { word: "あなた", reading: "あなた", meaning: "你", example: "あなたは 学生ですか。" },
-    { word: "会社員", reading: "かいしゃいん", meaning: "公司职员", example: "わたしは 会社員です。" },
-    { word: "学生", reading: "がくせい", meaning: "学生", example: "カリナさんは 学生です。" },
-    { word: "先生", reading: "せんせい", meaning: "老师", example: "ワット先生は IMC の先生です。" },
-    { word: "大学", reading: "だいがく", meaning: "大学", example: "富士大学の 学生です。" },
-    { word: "病院", reading: "びょういん", meaning: "医院", example: "病院の 先生です。" },
-    { word: "電話", reading: "でんわ", meaning: "电话", example: "電話番号は 何番ですか。" },
-  ],
-  2: [
-    { word: "これ", reading: "これ", meaning: "这个", example: "これは 本です。" },
-    { word: "それ", reading: "それ", meaning: "那个", example: "それは 辞書ですか。" },
-    { word: "あれ", reading: "あれ", meaning: "那个（远处）", example: "あれは テレビです。" },
-    { word: "本", reading: "ほん", meaning: "书", example: "これは 日本語の 本です。" },
-    { word: "辞書", reading: "じしょ", meaning: "词典", example: "それは 英語の 辞書です。" },
-    { word: "雑誌", reading: "ざっし", meaning: "杂志", example: "あれは 雑誌です。" },
-    { word: "新聞", reading: "しんぶん", meaning: "报纸", example: "これは 日本語の 新聞です。" },
-    { word: "鍵", reading: "かぎ", meaning: "钥匙", example: "これは 何の 鍵ですか。" },
-  ],
 };
 
 export default function VocabularyPage() {
-  const { currentLesson } = useLessonStore();
-  const { loadSettings } = useSettingsStore();
-  const [words, setWords] = useState<VocabWord[]>([]);
+  const { currentLesson } = useModulePage("vocabulary");
+  useStudySession("vocabulary", currentLesson);
+
+  const [words, setWords] = useState<VocabularyViewItem[]>([]);
   const [showReading, setShowReading] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [source, setSource] = useState<"cache" | "ai" | null>(null);
+
+  const loadWords = useCallback(
+    async (forceRefresh = false) => {
+      setLoading(true);
+      setError("");
+
+      try {
+        const response = await getModuleContent({
+          lessonId: currentLesson,
+          module: "vocabulary",
+          forceRefresh,
+        });
+        const masteryMap = await getMasteryMap(currentLesson, "vocabulary");
+        const nextWords = response.data.map((word) => ({
+          ...word,
+          mastery: masteryMap[word.word] as MasteryLevel | undefined,
+        }));
+
+        setWords(nextWords);
+        setSource(response.source);
+        await syncLearningProgress(
+          currentLesson,
+          "vocabulary",
+          response.data,
+          masteryMap
+        );
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "单词内容加载失败。");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [currentLesson]
+  );
 
   useEffect(() => {
-    loadSettings();
-  }, [loadSettings]);
-
-  const loadWords = useCallback(async () => {
-    setLoading(true);
-    const raw = MOCK_VOCAB[currentLesson] || MOCK_VOCAB[1] || [];
-    // Load saved mastery from IndexedDB
-    const masteryMap = await getMasteryMap(currentLesson, "vocabulary");
-    const withMastery = raw.map((w) => ({
-      ...w,
-      mastery: masteryMap[w.word] as MasteryLevel | undefined,
-    }));
-    setWords(withMastery);
-    setLoading(false);
-  }, [currentLesson]);
-
-  useEffect(() => {
-    loadWords();
+    void loadWords();
   }, [loadWords]);
 
   const handleMastery = async (index: number, level: MasteryLevel) => {
     const word = words[index];
     if (!word) return;
-    setWords((prev) =>
-      prev.map((w, i) => (i === index ? { ...w, mastery: level } : w))
+
+    const nextWords = words.map((item, itemIndex) =>
+      itemIndex === index ? { ...item, mastery: level } : item
     );
-    // Persist to IndexedDB
+    setWords(nextWords);
+
     await saveMastery(currentLesson, "vocabulary", word.word, level);
+    const masteryMap = await getMasteryMap(currentLesson, "vocabulary");
+    await syncLearningProgress(
+      currentLesson,
+      "vocabulary",
+      nextWords.map(({ mastery, ...item }) => item),
+      masteryMap
+    );
   };
 
   const speak = (text: string) => {
@@ -83,13 +87,13 @@ export default function VocabularyPage() {
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = "ja-JP";
       utterance.rate = 0.8;
+      speechSynthesis.cancel();
       speechSynthesis.speak(utterance);
     }
   };
 
   return (
     <div>
-      {/* Page header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-lg font-semibold text-text">
@@ -100,6 +104,11 @@ export default function VocabularyPage() {
           </h1>
           <p className="text-xs text-text-muted mt-1">
             第 {currentLesson} 課 · {words.length} 个单词
+            {source && (
+              <span className="ml-2">
+                · {source === "cache" ? "缓存内容" : "AI 生成"}
+              </span>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -111,7 +120,7 @@ export default function VocabularyPage() {
             {showReading ? "隐藏读音" : "显示读音"}
           </button>
           <button
-            onClick={loadWords}
+            onClick={() => void loadWords(true)}
             disabled={loading}
             className="p-1.5 rounded-lg border border-border text-text-secondary
                        hover:border-primary/40 hover:text-primary transition-colors"
@@ -121,32 +130,40 @@ export default function VocabularyPage() {
         </div>
       </div>
 
-      {/* Loading */}
       {loading && (
         <div className="flex justify-center py-12">
           <Loader2 size={24} className="animate-spin text-primary" />
         </div>
       )}
 
-      {/* Word cards */}
-      {!loading && (
+      {!loading && error && (
+        <div className="bg-bg-card border border-border rounded-xl p-6 text-sm text-text-secondary">
+          <p>{error}</p>
+          <button
+            onClick={() => void loadWords(true)}
+            className="mt-3 text-xs px-3 py-1.5 rounded-lg border border-border hover:border-primary/40 hover:text-primary transition-colors"
+          >
+            重试
+          </button>
+        </div>
+      )}
+
+      {!loading && !error && (
         <div className="space-y-3">
           {words.map((word, index) => (
             <div
-              key={index}
+              key={`${word.word}-${index}`}
               className="bg-bg-card border border-border rounded-xl p-4
                          hover:border-primary/20 transition-colors"
             >
-              <div className="flex items-start justify-between">
+              <div className="flex items-start justify-between gap-3">
                 <div className="flex-1">
                   <div className="flex items-center gap-3">
                     <span className="text-xl font-medium text-text">
                       {word.word}
                     </span>
                     {showReading && (
-                      <span className="text-sm text-primary">
-                        {word.reading}
-                      </span>
+                      <span className="text-sm text-primary">{word.reading}</span>
                     )}
                     <button
                       onClick={() => speak(word.word)}
@@ -168,7 +185,7 @@ export default function VocabularyPage() {
 
                 <MasteryButtons
                   current={word.mastery}
-                  onChange={(level) => handleMastery(index, level)}
+                  onChange={(level) => void handleMastery(index, level)}
                   size="sm"
                 />
               </div>

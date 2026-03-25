@@ -26,7 +26,9 @@ export default function WeakPointsPage() {
   }, []);
 
   useEffect(() => {
-    loadItems();
+    queueMicrotask(() => {
+      void loadItems();
+    });
   }, [loadItems]);
 
   const handleMastery = async (item: MasteryStatus, level: MasteryLevel) => {

@@ -1,5 +1,6 @@
 import { db } from "./db";
 import type { Module, MasteryLevel, MasteryStatus } from "@/types";
+import { emitDataUpdated } from "./events";
 
 /** Save or update mastery status for a knowledge item */
 export async function saveMastery(
@@ -30,6 +31,8 @@ export async function saveMastery(
       createdAt: new Date().toISOString(),
     });
   }
+
+  emitDataUpdated();
 }
 
 /** Get mastery status for items in a lesson+module */
@@ -58,14 +61,19 @@ export async function getWeakItems(): Promise<MasteryStatus[]> {
 
 /** Update a mastery item status (e.g. mark as mastered from weak-points page) */
 export async function updateMasteryById(id: number, status: MasteryLevel) {
+  const record = await db.masteryStatus.get(id);
+  if (!record) return;
+
   await db.masteryStatus.update(id, {
     status,
-    reviewCount: (await db.masteryStatus.get(id))!.reviewCount + 1,
+    reviewCount: record.reviewCount + 1,
     lastReviewedAt: new Date().toISOString(),
   });
+  emitDataUpdated();
 }
 
 /** Delete a mastery record */
 export async function deleteMasteryById(id: number) {
   await db.masteryStatus.delete(id);
+  emitDataUpdated();
 }

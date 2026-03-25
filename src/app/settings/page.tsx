@@ -8,7 +8,7 @@ const PROVIDERS = [
   {
     key: "openai",
     name: "OpenAI",
-    description: "GPT-4o / GPT-5.4 等（支持代理）",
+    description: "GPT-4.1 / GPT-4.1 mini 等（支持代理）",
     defaultBaseUrl: "https://api.openai.com/v1",
   },
   {
@@ -129,6 +129,11 @@ export default function SettingsPage() {
                                  placeholder:text-text-muted focus:outline-none focus:ring-2
                                  focus:ring-primary/30 focus:border-primary"
                     />
+                    {p.key === "openai" && (
+                      <p className="text-[11px] text-text-muted mt-1">
+                        官方接口建议先用 `gpt-4.1`；如代理已兼容，再切换到其他模型。
+                      </p>
+                    )}
                   </div>
 
                   <div>

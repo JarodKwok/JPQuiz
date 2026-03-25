@@ -72,19 +72,23 @@ export default function AIInputBar({ onSend, loading }: AIInputBarProps) {
           )}
         </button>
       </div>
-      <div className="flex gap-2 mt-2 max-w-3xl mx-auto">
-        {["练单词", "练语法", "出 5 道题", "复习薄弱"].map((hint) => (
+      <div className="flex gap-2 mt-2 max-w-3xl mx-auto flex-wrap">
+        {[
+          { label: "出5道单词题", prompt: "请出5道单词选择题" },
+          { label: "出5道语法题", prompt: "请出5道语法选择题" },
+          { label: "讲解语法", prompt: "请讲解本课的语法要点" },
+          { label: "复习薄弱", prompt: "帮我复习薄弱知识点" },
+        ].map((hint) => (
           <button
-            key={hint}
+            key={hint.label}
             onClick={() => {
-              setInput(hint);
-              textareaRef.current?.focus();
+              onSend(hint.prompt);
             }}
             className="text-[11px] px-2.5 py-1 rounded-full border border-border
                        text-text-muted hover:text-primary hover:border-primary/40
                        transition-colors"
           >
-            {hint}
+            {hint.label}
           </button>
         ))}
       </div>

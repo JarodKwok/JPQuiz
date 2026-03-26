@@ -2,6 +2,10 @@
 
 import type { Module } from "@/types";
 import type { ContentEnvelope, ModuleContent } from "@/types/content";
+import {
+  BUILTIN_CONTENT_UPDATED_AT,
+  getBuiltinModuleContent,
+} from "@/data/builtin-content";
 import { db } from "./db";
 import { streamAIText } from "./ai/client";
 import { parseModuleContent } from "./content/parsers";
@@ -21,6 +25,18 @@ export async function getModuleContent<M extends Module>({
   module: M;
   forceRefresh?: boolean;
 }): Promise<ContentEnvelope<M>> {
+  const builtin = getBuiltinModuleContent(lessonId, module);
+  if (builtin) {
+    return {
+      lessonId,
+      module,
+      data: builtin,
+      source: "builtin",
+      createdAt: BUILTIN_CONTENT_UPDATED_AT,
+      updatedAt: BUILTIN_CONTENT_UPDATED_AT,
+    };
+  }
+
   if (!forceRefresh) {
     const cached = await db.contentCache
       .where("[lessonId+module]")
@@ -96,7 +112,12 @@ export function getModuleItemKeys<M extends Module>(
     case "text":
       return [`text:${lessonId}`];
     case "examples":
-      return (data as ModuleContent<"examples">).map((item) => item.japanese);
+      return [
+        ...(data as ModuleContent<"examples">).patterns.map((item) => item.id),
+        ...(data as ModuleContent<"examples">).examples.map(
+          (item) => item.japanese
+        ),
+      ];
     case "listening":
       return (data as ModuleContent<"listening">).map(
         (item, index) => `listening:${lessonId}:${index}:${item.text}`

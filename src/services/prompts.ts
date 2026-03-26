@@ -192,23 +192,39 @@ export function buildModuleContentPrompt(lesson: number, module: string): string
 3. notes 为可选
 4. 不要输出任何额外文字`;
     case "examples":
-      return `请生成《大家的日语》第${lesson}课的标准例句。
+      return `请生成《大家的日语》第${lesson}课的句型与例句内容。
 
-只返回 JSON 数组，每一项结构如下：
-[
-  {
-    "japanese": "わたしは 日本語の 学生です。",
-    "reading": "わたしは にほんごの がくせいです。",
-    "translation": "我是日语学生。",
-    "grammar": "〜は 〜です"
-  }
-]
+只返回 JSON 对象，结构如下：
+{
+  "patterns": [
+    {
+      "id": "5-P1",
+      "pattern": "〜へ 行きます",
+      "meaning": "去某地",
+      "structure": "地点 + へ + 行きます",
+      "sampleJapanese": "わたしは 駅へ 行きます。",
+      "sampleReading": "わたしは えきへ いきます。",
+      "sampleTranslation": "我去车站。",
+      "notes": "可选字段"
+    }
+  ],
+  "examples": [
+    {
+      "japanese": "あした 東京へ 行きます。",
+      "reading": "あした とうきょうへ いきます。",
+      "translation": "明天去东京。",
+      "grammar": "〜へ 行きます"
+    }
+  ]
+}
 
 要求：
-1. 返回 5~10 个例句
-2. 每项必须包含 japanese、reading、translation
-3. grammar 为可选
-4. 不要输出任何额外文字`;
+1. patterns 返回 2~5 个核心句型
+2. examples 返回 5~10 个应用例句
+3. pattern 必须包含 id、pattern、meaning、structure、sampleJapanese、sampleReading、sampleTranslation
+4. example 必须包含 japanese、reading、translation
+5. notes、grammar 为可选
+6. 不要输出任何额外文字`;
     case "listening":
       return `请生成《大家的日语》第${lesson}课的听力选择题。
 

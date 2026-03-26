@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { ChevronDown, ChevronRight, Loader2, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, RefreshCw, Hash } from "lucide-react";
 import MasteryButtons from "@/components/lesson/MasteryButtons";
 import ModuleQuizPanel from "@/components/quiz/ModuleQuizPanel";
 import ModuleModeTabs from "@/components/quiz/ModuleModeTabs";
@@ -25,9 +25,10 @@ export default function GrammarPage() {
   const [points, setPoints] = useState<GrammarViewItem[]>([]);
   const [mode, setMode] = useState<"study" | "quiz">("study");
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [showNumbers, setShowNumbers] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [source, setSource] = useState<"cache" | "ai" | null>(null);
+  const [source, setSource] = useState<"builtin" | "cache" | "ai" | null>(null);
 
   const loadPoints = useCallback(
     async (forceRefresh = false) => {
@@ -98,23 +99,58 @@ export default function GrammarPage() {
             第 {currentLesson} 課 · {points.length} 个语法点
             {source && (
               <span className="ml-2">
-                · {source === "cache" ? "缓存内容" : "AI 生成"}
+                ·{" "}
+                {source === "builtin"
+                  ? "内置内容"
+                  : source === "cache"
+                    ? "缓存内容"
+                    : "AI 生成"}
               </span>
             )}
           </p>
         </div>
-        <button
-          onClick={() => void loadPoints(true)}
-          disabled={loading}
-          className="p-1.5 rounded-lg border border-border text-text-secondary
-                     hover:border-primary/40 hover:text-primary transition-colors"
-        >
-          {loading ? (
-            <Loader2 size={16} className="animate-spin" />
-          ) : (
-            <RefreshCw size={16} />
-          )}
-        </button>
+        {mode === "study" ? (
+          <div className="flex items-center gap-2">
+            {/* 序号开关 */}
+            <button
+              onClick={() => setShowNumbers(!showNumbers)}
+              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5 ${
+                showNumbers
+                  ? "border-primary text-primary bg-primary/5"
+                  : "border-border text-text-secondary hover:border-primary/40 hover:text-primary"
+              }`}
+              title={showNumbers ? "隐藏序号" : "显示序号"}
+            >
+              <Hash size={14} />
+              序号
+            </button>
+            <button
+              onClick={() => void loadPoints(true)}
+              disabled={loading}
+              className="p-1.5 rounded-lg border border-border text-text-secondary
+                         hover:border-primary/40 hover:text-primary transition-colors"
+            >
+              {loading ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <RefreshCw size={16} />
+              )}
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => void loadPoints(true)}
+            disabled={loading}
+            className="p-1.5 rounded-lg border border-border text-text-secondary
+                       hover:border-primary/40 hover:text-primary transition-colors"
+          >
+            {loading ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <RefreshCw size={16} />
+            )}
+          </button>
+        )}
       </div>
 
       <div className="mb-6">
@@ -151,7 +187,7 @@ export default function GrammarPage() {
 
           {!loading && !error && (
             <div className="space-y-3">
-              {points.map((point) => {
+              {points.map((point, index) => {
                 const isExpanded = expandedId === point.id;
 
                 return (
@@ -171,6 +207,12 @@ export default function GrammarPage() {
                           size={16}
                           className="text-text-muted shrink-0"
                         />
+                      )}
+                      {/* 序号 */}
+                      {showNumbers && (
+                        <span className="text-xs text-text-muted w-6 text-right shrink-0">
+                          {index + 1}.
+                        </span>
                       )}
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2">

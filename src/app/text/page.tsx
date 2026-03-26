@@ -23,7 +23,7 @@ export default function TextPage() {
   const [mastery, setMastery] = useState<MasteryLevel | undefined>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [source, setSource] = useState<"cache" | "ai" | null>(null);
+  const [source, setSource] = useState<"builtin" | "cache" | "ai" | null>(null);
 
   const masteryItemKey = `text:${currentLesson}`;
 
@@ -96,7 +96,12 @@ export default function TextPage() {
             {textData?.title ? ` · ${textData.title}` : ""}
             {source && (
               <span className="ml-2">
-                · {source === "cache" ? "缓存内容" : "AI 生成"}
+                ·{" "}
+                {source === "builtin"
+                  ? "内置内容"
+                  : source === "cache"
+                    ? "缓存内容"
+                    : "AI 生成"}
               </span>
             )}
           </p>

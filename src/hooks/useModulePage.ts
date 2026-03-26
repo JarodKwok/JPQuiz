@@ -25,19 +25,29 @@ export function useModulePage(module: Module) {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const params = new URLSearchParams(window.location.search);
-    const lessonFromQuery = normalizeLesson(params.get("lesson"));
+    const syncLessonFromQuery = () => {
+      const params = new URLSearchParams(window.location.search);
+      const lessonFromQuery = normalizeLesson(params.get("lesson"));
+      const activeLesson = useLessonStore.getState().currentLesson;
 
-    if (lessonFromQuery && lessonFromQuery !== currentLesson) {
-      setCurrentLesson(lessonFromQuery);
-      return;
-    }
+      if (lessonFromQuery) {
+        if (lessonFromQuery !== activeLesson) {
+          setCurrentLesson(lessonFromQuery);
+        }
+        return;
+      }
 
-    if (!lessonFromQuery) {
-      params.set("lesson", String(currentLesson));
+      params.set("lesson", String(activeLesson));
       router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-    }
-  }, [currentLesson, pathname, router, setCurrentLesson]);
+    };
+
+    syncLessonFromQuery();
+    window.addEventListener("popstate", syncLessonFromQuery);
+
+    return () => {
+      window.removeEventListener("popstate", syncLessonFromQuery);
+    };
+  }, [pathname, router, setCurrentLesson]);
 
   return { currentLesson };
 }

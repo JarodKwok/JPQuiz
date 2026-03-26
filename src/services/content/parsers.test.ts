@@ -50,4 +50,34 @@ describe("content parsers", () => {
       )
     ).toThrow("listening");
   });
+
+  it("parses examples object payload", () => {
+    const data = parseModuleContent(
+      "examples",
+      JSON.stringify({
+        patterns: [
+          {
+            id: "5-P1",
+            pattern: "〜へ 行きます",
+            meaning: "去某地",
+            structure: "地点 + へ + 行きます",
+            sampleJapanese: "わたしは 駅へ 行きます。",
+            sampleReading: "わたしは えきへ いきます。",
+            sampleTranslation: "我去车站。",
+          },
+        ],
+        examples: [
+          {
+            japanese: "あした 東京へ 行きます。",
+            reading: "あした とうきょうへ いきます。",
+            translation: "明天去东京。",
+            grammar: "〜へ 行きます",
+          },
+        ],
+      })
+    );
+
+    expect(data.patterns[0]?.id).toBe("5-P1");
+    expect(data.examples[0]?.japanese).toBe("あした 東京へ 行きます。");
+  });
 });

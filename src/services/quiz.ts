@@ -188,20 +188,40 @@ export function buildQuizTargetCandidates<M extends Module>(
         aliases: uniqueStrings([line.japanese, line.translation, line.notes]),
       })) as QuizTargetCandidate[];
     case "examples":
-      return (data as ModuleContent<"examples">).map((item, index) => ({
-        key: `examples:${lessonId}:${index}`,
-        masteryKey: item.japanese,
-        label: item.japanese,
-        module,
-        lessonId,
-        excerpt: item.translation,
-        aliases: uniqueStrings([
-          item.japanese,
-          item.reading,
-          item.translation,
-          item.grammar,
-        ]),
-      })) as QuizTargetCandidate[];
+      return [
+        ...(data as ModuleContent<"examples">).patterns.map((item) => ({
+          key: `examples:${lessonId}:pattern:${item.id}`,
+          masteryKey: item.id,
+          label: `${item.pattern} · ${item.meaning}`,
+          module,
+          lessonId,
+          excerpt: item.sampleTranslation,
+          aliases: uniqueStrings([
+            item.id,
+            item.pattern,
+            item.meaning,
+            item.structure,
+            item.sampleJapanese,
+            item.sampleReading,
+            item.sampleTranslation,
+            item.notes,
+          ]),
+        })),
+        ...(data as ModuleContent<"examples">).examples.map((item, index) => ({
+          key: `examples:${lessonId}:example:${index}`,
+          masteryKey: item.japanese,
+          label: item.japanese,
+          module,
+          lessonId,
+          excerpt: item.translation,
+          aliases: uniqueStrings([
+            item.japanese,
+            item.reading,
+            item.translation,
+            item.grammar,
+          ]),
+        })),
+      ] as QuizTargetCandidate[];
     case "listening":
       return (data as ModuleContent<"listening">).map((item, index) => ({
         key: `listening:${lessonId}:${index}:${item.text}`,

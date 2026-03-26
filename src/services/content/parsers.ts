@@ -1,9 +1,11 @@
 import type { Module } from "@/types";
 import type {
   ExampleItem,
+  ExamplesContent,
   GrammarItem,
   ListeningItem,
   ModuleContent,
+  SentencePatternItem,
   TextContent,
   VocabularyItem,
 } from "@/types/content";
@@ -93,6 +95,30 @@ function isExampleItem(value: unknown): value is ExampleItem {
   );
 }
 
+function isSentencePatternItem(value: unknown): value is SentencePatternItem {
+  return (
+    isRecord(value) &&
+    isString(value.id) &&
+    isString(value.pattern) &&
+    isString(value.meaning) &&
+    isString(value.structure) &&
+    isString(value.sampleJapanese) &&
+    isString(value.sampleReading) &&
+    isString(value.sampleTranslation) &&
+    (value.notes === undefined || typeof value.notes === "string")
+  );
+}
+
+function isExamplesContent(value: unknown): value is ExamplesContent {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.patterns) &&
+    value.patterns.every(isSentencePatternItem) &&
+    Array.isArray(value.examples) &&
+    value.examples.every(isExampleItem)
+  );
+}
+
 function isListeningItem(value: unknown): value is ListeningItem {
   return (
     isRecord(value) &&
@@ -128,8 +154,14 @@ export function parseModuleContent<M extends Module>(
       }
       break;
     case "examples":
-      if (Array.isArray(parsed) && parsed.every(isExampleItem)) {
+      if (isExamplesContent(parsed)) {
         return parsed as ModuleContent<M>;
+      }
+      if (Array.isArray(parsed) && parsed.every(isExampleItem)) {
+        return {
+          patterns: [],
+          examples: parsed,
+        } as unknown as ModuleContent<M>;
       }
       break;
     case "listening":

@@ -7,9 +7,10 @@
 - 课次切换：按第 `1`–`25` 课切换当前学习上下文
 - 五个学习模块：`vocabulary`、`grammar`、`text`、`examples`、`listening`
 - 双模式专题页：每个专题都支持 `学习` 和 `测验` 两种模式
-- AI 内容生成：按课次生成模块内容，并缓存到浏览器本地数据库
+- 学习内容内置：`1`–`25` 课五个模块都使用固定内置内容，切课无需再依赖 AI
 - 智能组卷：支持当前范围随机、指定目标、错题/薄弱项、混合强化
 - 固定题型：`选择题`、`填空题`、`问答题（翻译）`
+- 测验动态生成：AI 仅用于生成测验题内容，学习内容本身保持稳定
 - AI 助手：底部输入栏用于答疑、讲解、解释错题
 - 学习追踪：记录掌握度、学习时长、错题、测验结果与 AI 学情总结
 - 本地存储：AI 配置与学习数据都保存在浏览器本地，AI 设置会做本地加密
@@ -36,6 +37,33 @@ npm run dev
 ```bash
 http://localhost:3000
 ```
+
+## 服务启停
+
+现在可以直接用以下短命令管理服务：
+
+- `npm run app:up`：构建并在后台启动预览服务，默认端口 `3006`
+- `npm run app:stop`：停止预览服务
+- `npm run app:restart`：重建并重启预览服务
+- `npm run app:status`：查看预览服务状态
+- `npm run app:logs`：查看预览服务日志
+- `npm run app:stop-all`：停止所有通过脚本启动的受管服务
+
+如果你想跑后台开发服务：
+
+- `npm run app:dev:up`：后台启动开发服务，默认端口 `3007`
+- `npm run app:dev:stop`：停止后台开发服务
+- `npm run app:dev:status`：查看后台开发服务状态
+- `npm run app:dev:logs`：查看后台开发服务日志
+
+也支持临时改端口，例如：
+
+```bash
+JPQUIZ_PORT=3010 npm run app:up
+JPQUIZ_PORT=3010 npm run app:stop
+```
+
+脚本会把 PID 和日志写到项目下的 `.runtime/` 目录中，方便后续管理。
 
 ## AI 配置
 

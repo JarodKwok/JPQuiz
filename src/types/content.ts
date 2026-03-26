@@ -5,6 +5,7 @@ export interface VocabularyItem {
   reading: string;
   meaning: string;
   example?: string;
+  kanji?: string; // 日汉字形式（如果有）
 }
 
 export interface GrammarItem {
@@ -35,6 +36,22 @@ export interface ExampleItem {
   grammar?: string;
 }
 
+export interface SentencePatternItem {
+  id: string;
+  pattern: string;
+  meaning: string;
+  structure: string;
+  sampleJapanese: string;
+  sampleReading: string;
+  sampleTranslation: string;
+  notes?: string;
+}
+
+export interface ExamplesContent {
+  patterns: SentencePatternItem[];
+  examples: ExampleItem[];
+}
+
 export interface ListeningItem {
   text: string;
   options: string[];
@@ -45,7 +62,7 @@ export interface ModuleContentMap {
   vocabulary: VocabularyItem[];
   grammar: GrammarItem[];
   text: TextContent;
-  examples: ExampleItem[];
+  examples: ExamplesContent;
   listening: ListeningItem[];
 }
 
@@ -55,7 +72,7 @@ export interface ContentEnvelope<M extends Module = Module> {
   lessonId: number;
   module: M;
   data: ModuleContent<M>;
-  source: "cache" | "ai";
+  source: "builtin" | "cache" | "ai";
   createdAt: string;
   updatedAt: string;
 }

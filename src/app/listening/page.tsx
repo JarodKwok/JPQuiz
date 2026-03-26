@@ -23,7 +23,7 @@ export default function ListeningPage() {
   const [playing, setPlaying] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [source, setSource] = useState<"cache" | "ai" | null>(null);
+  const [source, setSource] = useState<"builtin" | "cache" | "ai" | null>(null);
 
   const loadItems = useCallback(
     async (forceRefresh = false) => {
@@ -120,7 +120,12 @@ export default function ListeningPage() {
             第 {currentLesson} 課 · 听选答案模式
             {source && (
               <span className="ml-2">
-                · {source === "cache" ? "缓存内容" : "AI 生成"}
+                ·{" "}
+                {source === "builtin"
+                  ? "内置内容"
+                  : source === "cache"
+                    ? "缓存内容"
+                    : "AI 生成"}
               </span>
             )}
           </p>

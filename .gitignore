@@ -20,6 +20,9 @@
 
 # misc
 .DS_Store
+
+# generated audio files (too large for git, regenerate with scripts/generate_edge_tts.py)
+/public/audio/
 *.pem
 .runtime/
 

@@ -10,6 +10,7 @@ import { useStudySession } from "@/hooks/useStudySession";
 import { getModuleContent } from "@/services/content";
 import { getMasteryMap, saveMastery } from "@/services/mastery";
 import { syncLearningProgress } from "@/services/progress";
+import { speak, speakAll } from "@/services/audio";
 import type { MasteryLevel } from "@/types";
 import type { TextContent } from "@/types/content";
 
@@ -57,19 +58,20 @@ export default function TextPage() {
     void loadText();
   }, [loadText]);
 
-  const speak = (text: string) => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = "ja-JP";
-      utterance.rate = 0.8;
-      speechSynthesis.cancel();
-      speechSynthesis.speak(utterance);
-    }
+  const playLine = (text: string, index: number) => {
+    void speak(text, currentLesson, "text", index);
   };
 
-  const speakAll = () => {
+  const playAll = () => {
     if (!textData) return;
-    speak(textData.lines.map((line) => line.japanese).join("\n"));
+    void speakAll(
+      textData.lines.map((line, i) => ({
+        text: line.japanese,
+        lessonId: currentLesson,
+        type: "text" as const,
+        index: i,
+      }))
+    );
   };
 
   const handleMastery = async (level: MasteryLevel) => {
@@ -117,7 +119,7 @@ export default function TextPage() {
               {showTranslation ? "隐藏翻译" : "显示翻译"}
             </button>
             <button
-              onClick={speakAll}
+              onClick={playAll}
               disabled={!textData}
               className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-border
                          text-text-secondary hover:border-primary/40 hover:text-primary transition-colors"
@@ -209,7 +211,7 @@ export default function TextPage() {
                     className="px-4 py-3 flex items-start gap-3 hover:bg-bg-sidebar/30 transition-colors group"
                   >
                     <button
-                      onClick={() => speak(line.japanese)}
+                      onClick={() => playLine(line.japanese, index)}
                       className="mt-0.5 p-1 rounded hover:bg-primary/10 text-text-muted
                                  hover:text-primary transition-colors opacity-0 group-hover:opacity-100"
                     >

@@ -10,6 +10,7 @@ import { useStudySession } from "@/hooks/useStudySession";
 import { getModuleContent } from "@/services/content";
 import { getMasteryMap, saveMastery } from "@/services/mastery";
 import { syncLearningProgress } from "@/services/progress";
+import { speak } from "@/services/audio";
 import type { MasteryLevel } from "@/types";
 import type {
   ExampleItem,
@@ -93,14 +94,12 @@ export default function ExamplesPage() {
     void loadExamples();
   }, [loadExamples]);
 
-  const speak = (text: string) => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = "ja-JP";
-      utterance.rate = 0.8;
-      speechSynthesis.cancel();
-      speechSynthesis.speak(utterance);
-    }
+  const playPattern = (text: string, index: number) => {
+    void speak(text, currentLesson, "pattern", index);
+  };
+
+  const playExample = (text: string, index: number) => {
+    void speak(text, currentLesson, "example", index);
   };
 
   const handlePatternMastery = async (index: number, level: MasteryLevel) => {
@@ -290,7 +289,7 @@ export default function ExamplesPage() {
                                 </p>
                               </div>
                               <button
-                                onClick={() => speak(pattern.sampleJapanese)}
+                                onClick={() => playPattern(pattern.sampleJapanese, index)}
                                 className="p-1.5 rounded-lg hover:bg-primary/10 text-text-muted hover:text-primary transition-colors"
                               >
                                 <Volume2 size={16} />
@@ -352,7 +351,7 @@ export default function ExamplesPage() {
                               </div>
                             </div>
                             <button
-                              onClick={() => speak(example.japanese)}
+                              onClick={() => playExample(example.japanese, index)}
                               className="p-1.5 rounded-lg hover:bg-primary/10 text-text-muted hover:text-primary transition-colors"
                             >
                               <Volume2 size={16} />

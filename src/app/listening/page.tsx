@@ -10,6 +10,7 @@ import { getModuleContent } from "@/services/content";
 import { getMasteryMap, saveMastery } from "@/services/mastery";
 import { syncLearningProgress } from "@/services/progress";
 import { saveWrongAnswer } from "@/services/wrongAnswers";
+import { speak } from "@/services/audio";
 import type { ListeningItem } from "@/types/content";
 
 export default function ListeningPage() {
@@ -61,16 +62,11 @@ export default function ListeningPage() {
     void loadItems();
   }, [loadItems]);
 
-  const speak = (text: string, index: number) => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = "ja-JP";
-      utterance.rate = 0.7;
-      utterance.onend = () => setPlaying(null);
-      setPlaying(index);
-      speechSynthesis.speak(utterance);
-    }
+  const playListening = (text: string, index: number) => {
+    setPlaying(index);
+    void speak(text, currentLesson, "listening", index).then(() =>
+      setPlaying(null)
+    );
   };
 
   const handleSelect = async (questionIndex: number, optionIndex: number) => {
@@ -216,7 +212,7 @@ export default function ListeningPage() {
                       Q{questionIndex + 1}
                     </span>
                     <button
-                      onClick={() => speak(item.text, questionIndex)}
+                      onClick={() => playListening(item.text, questionIndex)}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg
                                  bg-primary/10 text-primary text-sm hover:bg-primary/20 transition-colors"
                     >

@@ -10,6 +10,7 @@ import { useStudySession } from "@/hooks/useStudySession";
 import { getModuleContent } from "@/services/content";
 import { getMasteryMap, saveMastery } from "@/services/mastery";
 import { syncLearningProgress } from "@/services/progress";
+import { speak } from "@/services/audio";
 import type { MasteryLevel } from "@/types";
 import type { VocabularyItem } from "@/types/content";
 
@@ -121,14 +122,8 @@ export default function VocabularyPage() {
     );
   };
 
-  const speak = (text: string) => {
-    if (typeof window !== "undefined" && "speechSynthesis" in window) {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = "ja-JP";
-      utterance.rate = 0.8;
-      speechSynthesis.cancel();
-      speechSynthesis.speak(utterance);
-    }
+  const playWord = (text: string, index: number) => {
+    void speak(text, currentLesson, "vocab", index);
   };
 
   // 计算有汉字的单词数量
@@ -284,7 +279,7 @@ export default function VocabularyPage() {
                         )}
                         {/* 发音按钮 */}
                         <button
-                          onClick={() => speak(word.word)}
+                          onClick={() => playWord(word.word, index)}
                           className="p-1.5 rounded-lg hover:bg-primary/10 text-text-muted
                                      hover:text-primary transition-colors"
                         >

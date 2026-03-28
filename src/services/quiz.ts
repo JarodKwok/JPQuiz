@@ -913,12 +913,11 @@ export async function persistQuizSubmission<M extends Module>({
     );
 
     for (const masteryKey of masteryKeys) {
-      await saveMastery(
-        lessonId,
-        module,
-        masteryKey,
-        result.isCorrect ? "mastered" : "weak"
-      );
+      // 答错才更新掌握度为"不会"；答对不自动改为"会了"，
+      // 掌握度只能由用户在学习页手动标记。
+      if (!result.isCorrect) {
+        await saveMastery(lessonId, module, masteryKey, "weak");
+      }
     }
 
     if (!result.isCorrect) {

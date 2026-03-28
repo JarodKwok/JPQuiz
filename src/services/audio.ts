@@ -114,3 +114,46 @@ export function stop() {
     speechSynthesis.cancel();
   }
 }
+
+/**
+ * 播放胜利音效（Web Audio API 合成，无需音频文件）
+ * 当模块掌握度达到 100% 时调用
+ */
+export function playVictory() {
+  if (typeof window === "undefined") return;
+
+  const ctx = new AudioContext();
+
+  // 上行琶音 + 终止和弦，约 1.5 秒
+  const sequence: { freq: number; start: number; dur: number; vol: number }[] = [
+    { freq: 523.25, start: 0.0,  dur: 0.12, vol: 0.25 }, // C5
+    { freq: 659.25, start: 0.12, dur: 0.12, vol: 0.25 }, // E5
+    { freq: 783.99, start: 0.24, dur: 0.12, vol: 0.25 }, // G5
+    { freq: 1046.5, start: 0.36, dur: 0.12, vol: 0.28 }, // C6
+    // 终止和弦 (C E G C 同时响)
+    { freq: 523.25, start: 0.52, dur: 0.8,  vol: 0.2  },
+    { freq: 659.25, start: 0.52, dur: 0.8,  vol: 0.2  },
+    { freq: 783.99, start: 0.52, dur: 0.8,  vol: 0.2  },
+    { freq: 1046.5, start: 0.52, dur: 0.8,  vol: 0.22 },
+  ];
+
+  sequence.forEach(({ freq, start, dur, vol }) => {
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.type = "triangle"; // 柔和音色
+    osc.frequency.value = freq;
+
+    const t = ctx.currentTime + start;
+    gain.gain.setValueAtTime(vol, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + dur);
+
+    osc.start(t);
+    osc.stop(t + dur + 0.05);
+  });
+
+  // 自动关闭 AudioContext 释放资源
+  setTimeout(() => void ctx.close(), 2000);
+}

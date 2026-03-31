@@ -86,6 +86,17 @@
 - 输入：结构化学习统计数据
 - 输出：中文学习点评
 
+### 3.5 AI Tutor 分层记忆
+
+底部 AI 问答不再只发送单轮消息，而是使用分层上下文：
+
+- `Base Safety Prompt`：内置安全基座，限定为日语学习助手
+- `Tutor Profile Prompt`：账号级可配置的导师名字、风格、输出偏好
+- `Learner Snapshot Prompt`：当前课次、掌握度、薄弱项、错题、测验摘要
+- `Task Context Prompt`：当前模块教材摘要与最近几轮会话
+
+为了控制 token，用“最近几轮 + 压缩摘要 + 当前任务相关内容”替代整段历史回放。
+
 ---
 
 ## 四、数据模型
@@ -245,7 +256,7 @@ interface QuizSessionRecord {
 
 ## 五、Dexie 表结构
 
-当前数据库版本升级到 `v4`，包含：
+当前数据库版本升级到 `v5`，包含：
 
 ```ts
 learningProgress: "++id, lessonId, module, updatedAt"
@@ -254,7 +265,18 @@ wrongAnswers: "++id, lessonId, module, status"
 studySessions: "++id, date, module"
 contentCache: "++id, [lessonId+module], updatedAt"
 quizSessions: "++id, lessonId, module, questionType, sourceType, createdAt"
+aiConversations: "++id, ownerId, updatedAt, lastMessageAt"
+aiMessages: "++id, conversationId, ownerId, role, createdAt"
+aiConversationSummaries: "++id, conversationId, ownerId, updatedAt"
+aiLongTermMemories: "++id, ownerId, kind, score, updatedAt, lastUsedAt"
 ```
+
+其中：
+
+- `aiConversations`：对话线程
+- `aiMessages`：用户 / 助手消息
+- `aiConversationSummaries`：旧消息压缩摘要
+- `aiLongTermMemories`：后续沉淀稳定偏好与长期弱项
 
 ---
 

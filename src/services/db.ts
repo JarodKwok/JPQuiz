@@ -5,6 +5,10 @@ import type {
   WrongAnswer,
   StudySession,
   Module,
+  AIConversation,
+  AIConversationMessage,
+  AIConversationSummary,
+  AILongTermMemory,
 } from "@/types";
 import type { QuizSessionRecord } from "@/types/quiz";
 
@@ -26,6 +30,10 @@ class JPQuizDB extends Dexie {
   studySessions!: Table<StudySession>;
   contentCache!: Table<ContentCache>;
   quizSessions!: Table<QuizSessionRecord>;
+  aiConversations!: Table<AIConversation>;
+  aiMessages!: Table<AIConversationMessage>;
+  aiConversationSummaries!: Table<AIConversationSummary>;
+  aiLongTermMemories!: Table<AILongTermMemory>;
 
   constructor() {
     super("jpquiz");
@@ -43,6 +51,18 @@ class JPQuizDB extends Dexie {
       studySessions: "++id, date, module",
       contentCache: "++id, [lessonId+module], updatedAt",
       quizSessions: "++id, lessonId, module, questionType, sourceType, createdAt",
+    });
+    this.version(5).stores({
+      learningProgress: "++id, lessonId, module, updatedAt",
+      masteryStatus: "++id, lessonId, module, status, [lessonId+module+itemKey]",
+      wrongAnswers: "++id, lessonId, module, status",
+      studySessions: "++id, date, module",
+      contentCache: "++id, [lessonId+module], updatedAt",
+      quizSessions: "++id, lessonId, module, questionType, sourceType, createdAt",
+      aiConversations: "++id, ownerId, updatedAt, lastMessageAt",
+      aiMessages: "++id, conversationId, ownerId, role, createdAt",
+      aiConversationSummaries: "++id, conversationId, ownerId, updatedAt",
+      aiLongTermMemories: "++id, ownerId, kind, score, updatedAt, lastUsedAt",
     });
   }
 }

@@ -24,9 +24,80 @@ export interface AIProviderConfig {
   wireApi?: "chat" | "responses";
 }
 
+export type AITeachingStyle = "concise" | "structured" | "coach";
+export type AIAnswerFormatPreference = "table-first" | "bullet-first" | "mixed";
+
+export interface AIMemoryPolicySettings {
+  recentTurns: number;
+  weakItemsLimit: number;
+  recentWrongAnswersLimit: number;
+  summarizeEveryTurns: number;
+  maxLongTermMemoriesPerRequest: number;
+  totalSoftTokenLimit: number;
+  moduleContextItemsLimit: number;
+}
+
+export interface AITutorSettings {
+  assistantName: string;
+  customTutorPrompt: string;
+  teachingStyle: AITeachingStyle;
+  answerFormatPreference: AIAnswerFormatPreference;
+  memoryPolicy: AIMemoryPolicySettings;
+}
+
 export interface AISettings {
   activeProvider: string;
   providers: Record<string, AIProviderConfig>;
+  tutor: AITutorSettings;
+}
+
+export type AIConversationRole = "user" | "assistant";
+
+export interface AIConversation {
+  id?: number;
+  ownerId: string;
+  title: string;
+  lessonId: number;
+  module: Module;
+  createdAt: string;
+  updatedAt: string;
+  lastMessageAt: string;
+}
+
+export interface AIConversationMessage {
+  id?: number;
+  conversationId: number;
+  ownerId: string;
+  role: AIConversationRole;
+  content: string;
+  createdAt: string;
+}
+
+export interface AIConversationSummary {
+  id?: number;
+  conversationId: number;
+  ownerId: string;
+  summary: string;
+  messageCount: number;
+  updatedAt: string;
+}
+
+export type AILongTermMemoryKind =
+  | "preference"
+  | "weak_point"
+  | "goal"
+  | "summary";
+
+export interface AILongTermMemory {
+  id?: number;
+  ownerId: string;
+  kind: AILongTermMemoryKind;
+  text: string;
+  score: number;
+  source: string;
+  createdAt: string;
+  updatedAt: string;
+  lastUsedAt?: string;
 }
 
 // Learning Types

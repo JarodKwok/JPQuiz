@@ -12,6 +12,8 @@ describe("ai settings", () => {
       "https://gmn.chuangzuoli.com"
     );
     expect(DEFAULT_AI_SETTINGS.providers.openai.wireApi).toBe("responses");
+    expect(DEFAULT_AI_SETTINGS.tutor.assistantName).toBe("みな先生");
+    expect(DEFAULT_AI_SETTINGS.tutor.memoryPolicy.recentTurns).toBe(3);
   });
 
   it("backfills missing openai fields with defaults", () => {
@@ -30,6 +32,7 @@ describe("ai settings", () => {
       "https://gmn.chuangzuoli.com"
     );
     expect(normalized.providers.openai.wireApi).toBe("responses");
+    expect(normalized.tutor.assistantName).toBe("みな先生");
   });
 
   it("preserves explicit chat config and trims string inputs", () => {
@@ -44,5 +47,29 @@ describe("ai settings", () => {
     expect(normalized.model).toBe("custom-model");
     expect(normalized.baseUrl).toBe("https://example.com/v1");
     expect(normalized.wireApi).toBe("chat");
+  });
+
+  it("normalizes tutor settings and clamps memory policy", () => {
+    const normalized = normalizeAISettings({
+      tutor: {
+        assistantName: "  日语搭子  ",
+        customTutorPrompt: "  优先用表格输出  ",
+        teachingStyle: "coach",
+        answerFormatPreference: "mixed",
+        memoryPolicy: {
+          recentTurns: 99,
+          weakItemsLimit: -1,
+          totalSoftTokenLimit: 999999,
+        },
+      },
+    });
+
+    expect(normalized.tutor.assistantName).toBe("日语搭子");
+    expect(normalized.tutor.customTutorPrompt).toBe("优先用表格输出");
+    expect(normalized.tutor.teachingStyle).toBe("coach");
+    expect(normalized.tutor.answerFormatPreference).toBe("mixed");
+    expect(normalized.tutor.memoryPolicy.recentTurns).toBe(8);
+    expect(normalized.tutor.memoryPolicy.weakItemsLimit).toBe(0);
+    expect(normalized.tutor.memoryPolicy.totalSoftTokenLimit).toBe(8000);
   });
 });

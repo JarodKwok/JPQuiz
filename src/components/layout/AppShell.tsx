@@ -5,50 +5,210 @@ import Sidebar from "./Sidebar";
 import TopNav from "./TopNav";
 import AIInputBar from "./AIInputBar";
 import AIResponsePanel from "./AIResponsePanel";
+import type { AIConversationMessage } from "@/types";
 import { useLessonStore } from "@/stores/lessonStore";
-import { SYSTEM_PROMPT } from "@/services/prompts";
-import { streamAIText } from "@/services/ai/client";
+import {
+  appendConversationMessage,
+  getActiveConversation,
+  getConversationById,
+  listConversationMessages,
+  startNewConversation,
+  getOrCreateActiveConversation,
+} from "@/services/ai/memory";
+import { streamTutorReply } from "@/services/ai/tutor";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [aiResponse, setAiResponse] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [showPanel, setShowPanel] = useState(false);
-  const { currentLesson, currentModule, hydrate } = useLessonStore();
+  const [conversationId, setConversationId] = useState<number | null>(null);
+  const [conversationTitle, setConversationTitle] = useState("");
+  const [conversationMessages, setConversationMessages] = useState<
+    AIConversationMessage[]
+  >([]);
+  const { currentLesson, currentModule, hydrate, hydrated } = useLessonStore();
 
   useEffect(() => {
     hydrate();
   }, [hydrate]);
 
+  useEffect(() => {
+    if (!hydrated) return;
+
+    let cancelled = false;
+
+    void (async () => {
+      const activeConversation = await getActiveConversation();
+      if (!activeConversation?.id || cancelled) return;
+
+      const messages = await listConversationMessages(activeConversation.id);
+      if (cancelled) return;
+
+      setConversationId(activeConversation.id);
+      setConversationTitle(activeConversation.title);
+      setConversationMessages(messages);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrated]);
+
   const handleAISend = useCallback(async (message: string) => {
     setAiLoading(true);
-    setAiResponse("");
     setShowPanel(true);
-
-    // 自动附加当前课次上下文
-    const contextMessage = `[当前学习：第${currentLesson}课｜模块：${currentModule}]\n${message}`;
+    const now = new Date().toISOString();
+    const pendingAssistantMessage: AIConversationMessage = {
+      conversationId: conversationId || 0,
+      ownerId: "local-default",
+      role: "assistant",
+      content: "",
+      createdAt: now,
+    };
 
     try {
-      const fullText = await streamAIText(
-        [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: contextMessage },
-        ],
+      const activeConversation =
+        conversationId !== null
+          ? await getConversationById(conversationId)
+          : null;
+      const conversation =
+        activeConversation ||
+        (await getOrCreateActiveConversation({
+          lessonId: currentLesson,
+          module: currentModule,
+        }));
+
+      if (!conversation.id) {
+        throw new Error("当前对话初始化失败。");
+      }
+
+      const userMessage = await appendConversationMessage({
+        conversationId: conversation.id,
+        role: "user",
+        content: message,
+      });
+      const latestConversation = await getConversationById(conversation.id);
+
+      setConversationId(conversation.id);
+      setConversationTitle(latestConversation?.title || conversation.title);
+      setConversationMessages((prev) => [
+        ...prev,
+        userMessage,
+        { ...pendingAssistantMessage, conversationId: conversation.id },
+      ]);
+
+      const fullText = await streamTutorReply(
+        {
+          conversationId: conversation.id,
+          lessonId: currentLesson,
+          module: currentModule,
+        },
         (_, nextText) => {
-          setAiResponse(nextText);
+          setConversationMessages((prev) => {
+            if (prev.length === 0) return prev;
+
+            const nextMessages = [...prev];
+            const lastIndex = nextMessages.length - 1;
+            const lastMessage = nextMessages[lastIndex];
+            if (
+              lastMessage &&
+              lastMessage.role === "assistant" &&
+              !lastMessage.id
+            ) {
+              nextMessages[lastIndex] = {
+                ...lastMessage,
+                content: nextText,
+              };
+            }
+            return nextMessages;
+          });
         }
       );
 
+      const resolvedText =
+        fullText || "AI 未返回有效内容，请检查 API Key 和模型配置是否正确。";
+      const assistantMessage = await appendConversationMessage({
+        conversationId: conversation.id,
+        role: "assistant",
+        content: resolvedText,
+      });
+
+      setConversationMessages((prev) => {
+        if (prev.length === 0) return [assistantMessage];
+
+        const nextMessages = [...prev];
+        const lastIndex = nextMessages.length - 1;
+        const lastMessage = nextMessages[lastIndex];
+        if (
+          lastMessage &&
+          lastMessage.role === "assistant" &&
+          !lastMessage.id
+        ) {
+          nextMessages[lastIndex] = assistantMessage;
+          return nextMessages;
+        }
+
+        return [...nextMessages, assistantMessage];
+      });
+
       if (!fullText) {
-        setAiResponse("AI 未返回有效内容，请检查 API Key 和模型配置是否正确。");
+        return;
       }
     } catch (err) {
-      setAiResponse(
-        `错误: ${err instanceof Error ? err.message : "未知错误"}`
-      );
+      const errorMessage = `错误: ${
+        err instanceof Error ? err.message : "未知错误"
+      }`;
+
+      setConversationMessages((prev) => {
+        if (prev.length === 0) {
+          return [
+            {
+              ...pendingAssistantMessage,
+              conversationId: conversationId || 0,
+              content: errorMessage,
+            },
+          ];
+        }
+
+        const nextMessages = [...prev];
+        const lastIndex = nextMessages.length - 1;
+        const lastMessage = nextMessages[lastIndex];
+        if (
+          lastMessage &&
+          lastMessage.role === "assistant" &&
+          !lastMessage.id
+        ) {
+          nextMessages[lastIndex] = {
+            ...lastMessage,
+            content: errorMessage,
+          };
+          return nextMessages;
+        }
+
+        return [
+          ...nextMessages,
+          {
+            ...pendingAssistantMessage,
+            conversationId: conversationId || 0,
+            content: errorMessage,
+          },
+        ];
+      });
     } finally {
       setAiLoading(false);
     }
+  }, [conversationId, currentLesson, currentModule]);
+
+  const handleNewConversation = useCallback(async () => {
+    const conversation = await startNewConversation({
+      lessonId: currentLesson,
+      module: currentModule,
+    });
+
+    setConversationId(conversation.id || null);
+    setConversationTitle(conversation.title);
+    setConversationMessages([]);
+    setShowPanel(true);
   }, [currentLesson, currentModule]);
 
   return (
@@ -68,13 +228,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         {/* AI Response Panel - between content and input bar */}
         {showPanel && (
           <AIResponsePanel
-            content={aiResponse}
+            title={conversationTitle}
+            messages={conversationMessages}
             loading={aiLoading}
             lessonId={currentLesson}
             module={currentModule}
+            onNewConversation={handleNewConversation}
             onClose={() => {
               setShowPanel(false);
-              setAiResponse("");
             }}
           />
         )}

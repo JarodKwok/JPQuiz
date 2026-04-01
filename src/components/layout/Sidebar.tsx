@@ -61,7 +61,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
           <div className="flex items-center gap-2">
             <span className="text-xl">🌸</span>
             <span className="font-semibold text-sm text-text tracking-wide">
-              N5 辅导助手
+              大家的日语 AI陪练
             </span>
           </div>
           <button

@@ -72,7 +72,7 @@ export default function TopNav({ onMenuClick }: TopNavProps) {
       </button>
 
       <div className="hidden lg:flex items-center gap-2 min-w-0">
-        <span className="text-sm font-semibold text-text">日语 N5 AI 辅导助手</span>
+        <span className="text-sm font-semibold text-text">大家的日语 AI陪练</span>
       </div>
 
       {/* Lesson selector */}

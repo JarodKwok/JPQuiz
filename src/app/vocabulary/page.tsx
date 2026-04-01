@@ -10,7 +10,7 @@ import { useStudySession } from "@/hooks/useStudySession";
 import { getModuleContent } from "@/services/content";
 import { getMasteryMap, saveMastery } from "@/services/mastery";
 import { syncLearningProgress } from "@/services/progress";
-import { speak, playVictory } from "@/services/audio";
+import { speakVocab, playVictory } from "@/services/audio";
 import type { MasteryLevel } from "@/types";
 import type { VocabularyItem } from "@/types/content";
 
@@ -137,8 +137,8 @@ export default function VocabularyPage() {
     );
   };
 
-  const playWord = (text: string, wordIndex: number) => {
-    void speak(text, currentLesson, "vocab", wordIndex);
+  const playWord = (text: string, reading: string) => {
+    void speakVocab(text, currentLesson, reading);
   };
 
   // 统计各筛选数量
@@ -382,7 +382,7 @@ export default function VocabularyPage() {
                               </span>
                             )}
                             <button
-                              onClick={() => playWord(word.word, originalIndex)}
+                              onClick={() => playWord(word.word, word.reading)}
                               className="p-1.5 rounded-lg hover:bg-primary/10 text-text-muted
                                          hover:text-primary transition-colors"
                             >

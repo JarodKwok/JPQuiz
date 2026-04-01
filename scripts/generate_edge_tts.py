@@ -121,7 +121,7 @@ async def gen(text: str, voice: str, path: str, retries: int = 3):
                 print(f"    ❌ 失败: {text[:20]} ({e})")
                 raise
 
-async def generate_lesson(lesson_num: int, content: dict, output_base: str, dry_run: bool) -> dict:
+async def generate_lesson(lesson_num: int, content: dict, output_base: str, dry_run: bool, overwrite: bool = False) -> dict:
     """生成单课全部音频，返回课索引"""
     lesson_dir = f"{output_base}/lesson_{lesson_num:02d}"
     if not dry_run:
@@ -135,7 +135,7 @@ async def generate_lesson(lesson_num: int, content: dict, output_base: str, dry_
         rel = f"lesson_{lesson_num:02d}/vocab_{i:03d}.mp3"
         full = f"{output_base}/{rel}"
         index["vocab"].append({"text": word, "file": rel})
-        if not dry_run and not os.path.exists(full):
+        if not dry_run and (not os.path.exists(full) or overwrite):
             tasks.append(gen(word, VOICE_MALE, full))
 
     # 句型示例 → 男声
@@ -143,7 +143,7 @@ async def generate_lesson(lesson_num: int, content: dict, output_base: str, dry_
         rel = f"lesson_{lesson_num:02d}/pattern_{i:03d}.mp3"
         full = f"{output_base}/{rel}"
         index["patterns"].append({"text": sent, "file": rel})
-        if not dry_run and not os.path.exists(full):
+        if not dry_run and (not os.path.exists(full) or overwrite):
             tasks.append(gen(sent, VOICE_MALE, full))
 
     # 例句 → 男声
@@ -151,7 +151,7 @@ async def generate_lesson(lesson_num: int, content: dict, output_base: str, dry_
         rel = f"lesson_{lesson_num:02d}/example_{i:03d}.mp3"
         full = f"{output_base}/{rel}"
         index["examples"].append({"text": sent, "file": rel})
-        if not dry_run and not os.path.exists(full):
+        if not dry_run and (not os.path.exists(full) or overwrite):
             tasks.append(gen(sent, VOICE_MALE, full))
 
     # 课文行 → 按说话人性别
@@ -166,7 +166,7 @@ async def generate_lesson(lesson_num: int, content: dict, output_base: str, dry_
             "voice": voice,
             "file": rel,
         })
-        if not dry_run and not os.path.exists(full):
+        if not dry_run and (not os.path.exists(full) or overwrite):
             tasks.append(gen(spoken_text, voice, full))
 
     # 听力 → 男声
@@ -174,7 +174,7 @@ async def generate_lesson(lesson_num: int, content: dict, output_base: str, dry_
         rel = f"lesson_{lesson_num:02d}/listening_{i:03d}.mp3"
         full = f"{output_base}/{rel}"
         index["listening"].append({"text": li_text, "file": rel})
-        if not dry_run and not os.path.exists(full):
+        if not dry_run and (not os.path.exists(full) or overwrite):
             tasks.append(gen(li_text, VOICE_MALE, full))
 
     if tasks:
@@ -219,7 +219,7 @@ async def main_async(args):
     total_files = 0
 
     for lesson_num in sorted(lessons.keys()):
-        idx = await generate_lesson(lesson_num, lessons[lesson_num], output_base, args.dry_run)
+        idx = await generate_lesson(lesson_num, lessons[lesson_num], output_base, args.dry_run, getattr(args, 'overwrite', False))
         master_index[str(lesson_num)] = idx
         total_files += (len(idx["vocab"]) + len(idx["examples"]) +
                         len(idx["lines"]) + len(idx["listening"]))
@@ -244,8 +244,9 @@ async def main_async(args):
 
 def main():
     parser = argparse.ArgumentParser(description="Edge TTS 日语音频批量生成")
-    parser.add_argument("--lesson",  type=int, help="只生成指定课（默认全部）")
-    parser.add_argument("--dry-run", action="store_true", help="只统计不生成")
+    parser.add_argument("--lesson",    type=int, help="只生成指定课（默认全部）")
+    parser.add_argument("--dry-run",   action="store_true", help="只统计不生成")
+    parser.add_argument("--overwrite", action="store_true", help="覆盖已存在的音频文件")
     args = parser.parse_args()
     asyncio.run(main_async(args))
 

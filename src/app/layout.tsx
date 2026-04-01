@@ -3,9 +3,11 @@ import "./globals.css";
 import AppShell from "@/components/layout/AppShell";
 
 export const metadata: Metadata = {
-  title: "N5 辅导助手 — 日语学习",
-  description:
-    "基于《大家的日语》的 AI 日语 N5 辅导助手",
+  title: "大家的日语 AI陪练版",
+  description: "《大家的日语》初级1 AI陪练——词汇、语法、课文、例句全覆盖",
+  icons: {
+    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌸</text></svg>",
+  },
 };
 
 export default function RootLayout({

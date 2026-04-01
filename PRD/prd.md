@@ -1,10 +1,10 @@
-# 日语 N5 AI 辅导助手（大家的日语专属版）PRD
+# 大家的日语 AI陪练 PRD
 
 ## 一、文档概述
 
 ### 1.1 产品名称
 
-日语 N5 AI 辅导助手（大家的日语专属版）
+大家的日语 AI陪练
 
 ### 1.2 产品定位
 
@@ -90,31 +90,7 @@
 
 正式测验统一在专题页的“测验”tab 内完成。
 
-同时，AI 问答需要具备基础多轮记忆能力：
-
-- 支持连续追问，不应每次都丢失上一轮上下文
-- 能结合当前课次、当前专题与学习状态回答
-- 不要求无限长上下文，但要有压缩摘要能力，控制 token 消耗
-
-### 3.5 AI 导师配置与安全边界
-
-系统需要支持 AI 导师基础配置：
-
-- 导师名字
-- 教学风格
-- 输出偏好
-- 个性化导师提示词
-- 记忆策略参数
-
-这些配置需要为未来“每个账号独立配置”预留空间。
-
-同时，系统必须保留不可修改的基础安全边界：
-
-- AI 仅围绕日语学习提供帮助
-- 对黄赌毒、政治、宗教、战争、暴力、违法、自残等敏感或危险主题，必须拒答
-- 即使用户以“词汇学习”“翻译”“例句教学”等形式绕路，也不能提供相关内容
-
-### 3.6 掌握状态标记
+### 3.5 掌握状态标记
 
 所有专题学习内容都保留三种掌握状态：
 
@@ -145,7 +121,7 @@
 - 展示读音
 - 展示中文释义
 - 展示例句
-- 支持发音（Edge TTS 拟人化男声）
+- 支持发音（Edge TTS 拟人化神经网络男声，内容命名体系，与顺序解耦）
 - 支持掌握度标记（会了 / 模糊 / 不会）
 - 支持按掌握状态筛选：全部 / 不会 / 模糊 / 待复习（不会 + 模糊 + 未标记），各分类显示数量
 - 工具栏（序号 / 汉字 / 中文开关）滚动时悬浮置顶，方便全局控制
@@ -464,5 +440,100 @@ MVP 暂不包含：
 
 - 开放式主观题语义评分
 - 云端同步与账号体系
-- 独立音频资源管理
 - 复杂考试排版与正式试卷导出
+
+---
+
+## 十一、音频系统设计
+
+### 11.1 音频架构概览
+
+| 模块 | 命名体系 | 存储位置 | 服务方式 | 声音策略 |
+|------|---------|----------|---------|---------|
+| 单词（vocab） | 内容命名：`vocab_{读音}.mp3` | `books/audio/lesson_XX/` | `/api/audio/books/` API 路由 | 男声（KeitaNeural） |
+| 课文（text） | 索引命名：`text_000.mp3` | `public/audio/lessons/lesson_XX/` | Next.js 静态文件 | 按说话人性别：女→NanamiNeural，男→KeitaNeural |
+| 例句（example） | 索引命名：`example_000.mp3` | `public/audio/lessons/lesson_XX/` | Next.js 静态文件 | 男声（KeitaNeural） |
+| 听力（listening） | 索引命名：`listening_000.mp3` | `public/audio/lessons/lesson_XX/` | Next.js 静态文件 | 男声（KeitaNeural） |
+
+### 11.2 音频声音规格
+
+- **男声（词汇、例句、听力默认）**：`ja-JP-KeitaNeural`（Microsoft Edge TTS 高质量神经网络男声）
+- **女声（课文女性角色）**：`ja-JP-NanamiNeural`（Microsoft Edge TTS 高质量神经网络女声）
+- **语速**：`-10%`（略慢，适合学习朗读）
+- **格式**：MP3
+
+### 11.3 课文说话人声音分配规则
+
+课文对话中，根据说话人姓名自动分配男女声：
+
+- **已知女性角色**：カリナ、ワン、佐藤、店員(女)、マリア、テレーザ、アンナ → 女声
+- **已知男性角色**：ミラー、グプタ、山田、サントス、木村、先生 等 → 男声
+- **名字特征**：姓名末尾含子/美/恵/江/代/香/奈/理/花/葉 → 女声
+- **其他/未知**：默认男声
+
+### 11.4 单词音频命名设计（内容命名体系）
+
+单词音频采用**基于读音的内容命名**，与词汇在课次中的排列顺序完全解耦：
+
+```
+books/audio/lesson_01/vocab_わたし.mp3
+books/audio/lesson_01/vocab_がくせい.mp3
+books/audio/lesson_01/vocab_〜じん.mp3   → 文件名: vocab_じん.mp3 (去掉~)
+```
+
+**优势**：
+- 教材内容重新排序后，音频文件无需重建，自动匹配
+- 新增词汇只需生成新文件，不影响已有文件
+- 便于逐词独立替换或更新音质
+
+### 11.5 音频生成脚本
+
+| 脚本 | 用途 | 输出目录 |
+|------|------|---------|
+| `scripts/migrate_vocab_audio.py` | **优先复用**旧音频，对新增词汇调用 TTS 生成 | `books/audio/` |
+| `scripts/generate_books_audio.py` | 全量重新生成词汇音频（内容命名体系） | `books/audio/` |
+| `scripts/generate_edge_tts.py` | 生成课文/例句/听力音频（索引命名体系），支持 `--overwrite` | `public/audio/lessons/` |
+
+**推荐工作流**：
+
+```bash
+# 激活环境
+source venv313/bin/activate
+
+# 步骤1：迁移词汇音频（复用旧文件 + 生成新文件）
+python scripts/migrate_vocab_audio.py
+
+# 步骤2：重新生成课文/例句音频（内容更新后）
+python scripts/generate_edge_tts.py --overwrite
+
+# 单独重建某课词汇
+python scripts/migrate_vocab_audio.py --lesson 3 --overwrite
+```
+
+### 11.6 前端音频服务
+
+```typescript
+// 单词 → 内容命名，走 API 路由
+speakVocab(text, lessonId, reading)
+// URL 示例：/api/audio/books/lesson_01/vocab_わたし.mp3
+
+// 课文/例句/听力 → 索引命名，走 Next.js 静态文件
+speak(text, lessonId, type, itemIndex)
+// URL 示例：/audio/lessons/lesson_01/text_000.mp3
+```
+
+三级降级策略：
+1. 预生成 MP3（Edge TTS 拟人化神经网络声音）
+2. 浏览器 Web Speech API（系统 TTS，音质较差）
+3. 静默（无法播放时不报错）
+
+### 11.7 音频文件 Git 策略
+
+音频文件体积大，不纳入 Git 版本管理：
+
+```gitignore
+/books/audio/        # 词汇音频（内容命名体系）
+/public/audio/       # 课文/例句音频（索引命名体系）
+```
+
+部署时通过脚本在本地或 CI 生成。

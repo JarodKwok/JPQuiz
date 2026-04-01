@@ -10,7 +10,7 @@ import { useStudySession } from "@/hooks/useStudySession";
 import { getModuleContent } from "@/services/content";
 import { getMasteryMap, saveMastery } from "@/services/mastery";
 import { syncLearningProgress } from "@/services/progress";
-import { speak } from "@/services/audio";
+import { speakExample } from "@/services/audio";
 import type { MasteryLevel } from "@/types";
 import type {
   ExampleItem,
@@ -94,12 +94,12 @@ export default function ExamplesPage() {
     void loadExamples();
   }, [loadExamples]);
 
-  const playPattern = (text: string, index: number) => {
-    void speak(text, currentLesson, "pattern", index);
+  const playPattern = (text: string) => {
+    void speakExample(text, currentLesson, "pattern");
   };
 
-  const playExample = (text: string, index: number) => {
-    void speak(text, currentLesson, "example", index);
+  const playExample = (text: string) => {
+    void speakExample(text, currentLesson, "example");
   };
 
   const handlePatternMastery = async (index: number, level: MasteryLevel) => {
@@ -255,8 +255,8 @@ export default function ExamplesPage() {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1">
+                          {/* 标题行：序号 + id + 日文 + 发音 */}
                           <div className="flex items-center gap-2 flex-wrap">
-                            {/* 序号 */}
                             {showNumbers && (
                               <span className="text-xs text-text-muted w-5 text-right shrink-0">
                                 {index + 1}.
@@ -265,37 +265,36 @@ export default function ExamplesPage() {
                             <span className="text-[11px] px-2 py-0.5 rounded-full bg-primary/10 text-primary">
                               {pattern.id}
                             </span>
-                            <p className="text-base font-medium text-text">
+                            <p className="text-base font-medium text-text flex-1">
                               {pattern.pattern}
                             </p>
+                            <button
+                              onClick={() => playPattern(pattern.sampleJapanese)}
+                              className="p-1.5 rounded-lg hover:bg-primary/10 text-text-muted hover:text-primary transition-colors shrink-0"
+                            >
+                              <Volume2 size={14} />
+                            </button>
                           </div>
                           <p className="text-sm text-text-secondary mt-1">
                             {pattern.meaning}
                           </p>
-                          <p className="text-xs text-text-muted mt-2">
-                            结构：{pattern.structure}
-                          </p>
-                          <div className="mt-3 rounded-lg bg-bg px-3 py-2 border border-border/70">
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <p className="text-sm text-text">
-                                  {pattern.sampleJapanese}
-                                </p>
-                                <p className="text-xs text-primary mt-1">
-                                  {pattern.sampleReading}
-                                </p>
-                                <p className="text-xs text-text-secondary mt-1">
-                                  {pattern.sampleTranslation}
-                                </p>
-                              </div>
-                              <button
-                                onClick={() => playPattern(pattern.sampleJapanese, index)}
-                                className="p-1.5 rounded-lg hover:bg-primary/10 text-text-muted hover:text-primary transition-colors"
-                              >
-                                <Volume2 size={16} />
-                              </button>
+                          {pattern.structure && pattern.structure !== pattern.pattern && (
+                            <p className="text-xs text-text-muted mt-1.5">
+                              结构：{pattern.structure}
+                            </p>
+                          )}
+                          {/* 仅当 sampleJapanese 与 pattern 不同时显示内嵌例句框 */}
+                          {pattern.sampleJapanese !== pattern.pattern && (
+                            <div className="mt-3 rounded-lg bg-bg px-3 py-2 border border-border/70">
+                              <p className="text-sm text-text">{pattern.sampleJapanese}</p>
+                              {pattern.sampleReading !== pattern.sampleJapanese && (
+                                <p className="text-xs text-primary mt-1">{pattern.sampleReading}</p>
+                              )}
+                              {pattern.sampleTranslation !== pattern.meaning && (
+                                <p className="text-xs text-text-secondary mt-1">{pattern.sampleTranslation}</p>
+                              )}
                             </div>
-                          </div>
+                          )}
                           {pattern.notes && (
                             <p className="text-xs text-text-muted mt-2">
                               {pattern.notes}
@@ -345,13 +344,15 @@ export default function ExamplesPage() {
                                 <p className="text-base text-text">
                                   {example.japanese}
                                 </p>
-                                <p className="text-xs text-primary mt-1">
-                                  {example.reading}
-                                </p>
+                                {example.reading && example.reading !== example.japanese && (
+                                  <p className="text-xs text-primary mt-1">
+                                    {example.reading}
+                                  </p>
+                                )}
                               </div>
                             </div>
                             <button
-                              onClick={() => playExample(example.japanese, index)}
+                              onClick={() => playExample(example.japanese)}
                               className="p-1.5 rounded-lg hover:bg-primary/10 text-text-muted hover:text-primary transition-colors"
                             >
                               <Volume2 size={16} />

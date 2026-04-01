@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Volume2, Eye, EyeOff, Loader2, RefreshCw } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { Volume2, Eye, EyeOff, Loader2, RefreshCw, StopCircle, PlayCircle } from "lucide-react";
 import MasteryButtons from "@/components/lesson/MasteryButtons";
 import ModuleQuizPanel from "@/components/quiz/ModuleQuizPanel";
 import ModuleModeTabs from "@/components/quiz/ModuleModeTabs";
@@ -10,7 +10,7 @@ import { useStudySession } from "@/hooks/useStudySession";
 import { getModuleContent } from "@/services/content";
 import { getMasteryMap, saveMastery } from "@/services/mastery";
 import { syncLearningProgress } from "@/services/progress";
-import { speak, speakAll } from "@/services/audio";
+import { speakText, speakTextAll, stop } from "@/services/audio";
 import type { MasteryLevel } from "@/types";
 import type { TextContent } from "@/types/content";
 
@@ -25,6 +25,11 @@ export default function TextPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [source, setSource] = useState<"builtin" | "cache" | "ai" | null>(null);
+
+  // 朗读全文状态
+  const [isReadingAll, setIsReadingAll] = useState(false);
+  const [highlightIndex, setHighlightIndex] = useState<number>(-1);
+  const lineRefs = useRef<(HTMLDivElement | null)[]>([]);
 
   const masteryItemKey = `text:${currentLesson}`;
 
@@ -58,20 +63,45 @@ export default function TextPage() {
     void loadText();
   }, [loadText]);
 
-  const playLine = (text: string, index: number) => {
-    void speak(text, currentLesson, "text", index);
+  // 切换课次时停止朗读
+  useEffect(() => {
+    stop();
+    setIsReadingAll(false);
+    setHighlightIndex(-1);
+  }, [currentLesson]);
+
+  const playLine = (japanese: string) => {
+    stop();
+    setIsReadingAll(false);
+    setHighlightIndex(-1);
+    void speakText(japanese, currentLesson);
   };
 
-  const playAll = () => {
+  const handleReadAll = () => {
     if (!textData) return;
-    void speakAll(
-      textData.lines.map((line, i) => ({
-        text: line.japanese,
-        lessonId: currentLesson,
-        type: "text" as const,
-        index: i,
-      }))
-    );
+
+    if (isReadingAll) {
+      stop();
+      setIsReadingAll(false);
+      setHighlightIndex(-1);
+      return;
+    }
+
+    setIsReadingAll(true);
+
+    void speakTextAll(
+      textData.lines.map((l) => l.japanese),
+      currentLesson,
+      (index) => {
+        setHighlightIndex(index);
+        if (index >= 0) {
+          lineRefs.current[index]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        }
+      }
+    ).finally(() => {
+      setIsReadingAll(false);
+      setHighlightIndex(-1);
+    });
   };
 
   const handleMastery = async (level: MasteryLevel) => {
@@ -119,13 +149,25 @@ export default function TextPage() {
               {showTranslation ? "隐藏翻译" : "显示翻译"}
             </button>
             <button
-              onClick={playAll}
+              onClick={handleReadAll}
               disabled={!textData}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-border
-                         text-text-secondary hover:border-primary/40 hover:text-primary transition-colors"
+              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors
+                ${isReadingAll
+                  ? "border-red-400/60 text-red-500 hover:border-red-500"
+                  : "border-border text-text-secondary hover:border-primary/40 hover:text-primary"
+                }`}
             >
-              <Volume2 size={14} />
-              朗读全文
+              {isReadingAll ? (
+                <>
+                  <StopCircle size={14} />
+                  停止朗读
+                </>
+              ) : (
+                <>
+                  <PlayCircle size={14} />
+                  朗读全文
+                </>
+              )}
             </button>
             <button
               onClick={() => void loadText(true)}
@@ -205,33 +247,50 @@ export default function TextPage() {
               </div>
 
               <div className="bg-bg-card border border-border rounded-xl divide-y divide-border">
-                {textData.lines.map((line, index) => (
-                  <div
-                    key={`${line.japanese}-${index}`}
-                    className="px-4 py-3 flex items-start gap-3 hover:bg-bg-sidebar/30 transition-colors group"
-                  >
-                    <button
-                      onClick={() => playLine(line.japanese, index)}
-                      className="mt-0.5 p-1 rounded hover:bg-primary/10 text-text-muted
-                                 hover:text-primary transition-colors opacity-0 group-hover:opacity-100"
+                {textData.lines.map((line, index) => {
+                  const isHighlighted = highlightIndex === index;
+                  return (
+                    <div
+                      key={`${line.japanese}-${index}`}
+                      ref={(el) => { lineRefs.current[index] = el; }}
+                      className={`px-4 py-3 flex items-start gap-3 transition-colors group
+                        ${isHighlighted
+                          ? "bg-primary/5 border-l-2 border-l-primary"
+                          : "hover:bg-bg-sidebar/30"
+                        }`}
                     >
-                      <Volume2 size={14} />
-                    </button>
-                    <div className="flex-1">
-                      <p className="text-sm text-text leading-relaxed">
-                        {line.japanese}
-                      </p>
-                      {showTranslation && (
-                        <p className="text-xs text-text-secondary mt-1">
-                          {line.translation}
+                      <button
+                        onClick={() => playLine(line.japanese)}
+                        className={`mt-0.5 p-1 rounded hover:bg-primary/10 transition-colors shrink-0
+                          ${isHighlighted
+                            ? "text-primary opacity-100"
+                            : "text-text-muted hover:text-primary opacity-0 group-hover:opacity-100"
+                          }`}
+                      >
+                        <Volume2
+                          size={14}
+                          className={isHighlighted ? "animate-pulse" : ""}
+                        />
+                      </button>
+                      <div className="flex-1">
+                        <p
+                          className={`text-sm leading-relaxed transition-colors
+                            ${isHighlighted ? "text-primary font-medium" : "text-text"}`}
+                        >
+                          {line.japanese}
                         </p>
-                      )}
-                      {line.notes && (
-                        <p className="text-[11px] text-primary mt-1">{line.notes}</p>
-                      )}
+                        {showTranslation && (
+                          <p className="text-xs text-text-secondary mt-1">
+                            {line.translation}
+                          </p>
+                        )}
+                        {line.notes && (
+                          <p className="text-[11px] text-primary mt-1">{line.notes}</p>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}

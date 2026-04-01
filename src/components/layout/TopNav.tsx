@@ -69,9 +69,6 @@ export default function TopNav({ onMenuClick }: TopNavProps) {
         <Menu size={20} />
       </button>
 
-      <div className="hidden lg:flex items-center gap-2 min-w-0">
-        <span className="text-sm font-semibold text-text">大家的日语 AI陪练</span>
-      </div>
 
       {/* Lesson selector */}
       <div className="flex items-center gap-2">

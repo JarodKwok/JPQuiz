@@ -45,8 +45,7 @@ function isModule(value: unknown): value is Module {
     value === "vocabulary" ||
     value === "grammar" ||
     value === "text" ||
-    value === "examples" ||
-    value === "listening"
+    value === "examples"
   );
 }
 
@@ -222,16 +221,6 @@ export function buildQuizTargetCandidates<M extends Module>(
           ]),
         })),
       ] as QuizTargetCandidate[];
-    case "listening":
-      return (data as ModuleContent<"listening">).map((item, index) => ({
-        key: `listening:${lessonId}:${index}:${item.text}`,
-        masteryKey: `listening:${lessonId}:${index}:${item.text}`,
-        label: `Q${index + 1} · ${item.text}`,
-        module,
-        lessonId,
-        excerpt: item.options.join(" / "),
-        aliases: uniqueStrings([item.text, ...item.options]),
-      })) as QuizTargetCandidate[];
     default:
       return [];
   }

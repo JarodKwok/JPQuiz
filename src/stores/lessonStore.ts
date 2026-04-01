@@ -19,8 +19,7 @@ function normalizeModule(value: string | null): Module {
     value === "vocabulary" ||
     value === "grammar" ||
     value === "text" ||
-    value === "examples" ||
-    value === "listening"
+    value === "examples"
   ) {
     return value;
   }

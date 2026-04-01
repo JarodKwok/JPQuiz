@@ -40,17 +40,6 @@ describe("content parsers", () => {
     expect(data[0]?.id).toBe("1-1");
   });
 
-  it("throws on invalid listening content", () => {
-    expect(() =>
-      parseModuleContent(
-        "listening",
-        JSON.stringify([
-          { text: "a", options: ["1", "2"], answer: 3 },
-        ])
-      )
-    ).toThrow("listening");
-  });
-
   it("parses examples object payload", () => {
     const data = parseModuleContent(
       "examples",

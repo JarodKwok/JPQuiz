@@ -52,18 +52,11 @@ export interface ExamplesContent {
   examples: ExampleItem[];
 }
 
-export interface ListeningItem {
-  text: string;
-  options: string[];
-  answer: number;
-}
-
 export interface ModuleContentMap {
   vocabulary: VocabularyItem[];
   grammar: GrammarItem[];
   text: TextContent;
   examples: ExamplesContent;
-  listening: ListeningItem[];
 }
 
 export type ModuleContent<M extends Module = Module> = ModuleContentMap[M];

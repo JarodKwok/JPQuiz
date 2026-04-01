@@ -101,7 +101,6 @@ const MODULE_NAMES: Record<Module, string> = {
   grammar: "语法",
   text: "课文",
   examples: "例句",
-  listening: "听力",
 };
 
 const QUIZ_TYPE_NAMES: Record<QuizQuestionType, string> = {
@@ -123,7 +122,6 @@ export function buildLessonPrompt(lesson: number, module: string): string {
     grammar: "语法",
     text: "课文",
     examples: "例句",
-    listening: "听力",
   };
 
   const moduleName = moduleNames[module] || module;
@@ -225,24 +223,6 @@ export function buildModuleContentPrompt(lesson: number, module: string): string
 4. example 必须包含 japanese、reading、translation
 5. notes、grammar 为可选
 6. 不要输出任何额外文字`;
-    case "listening":
-      return `请生成《大家的日语》第${lesson}课的听力选择题。
-
-只返回 JSON 数组，每一项结构如下：
-[
-  {
-    "text": "これは 日本語の 本ですか。",
-    "options": ["这是英语书吗？", "这是日语书吗？", "那是日语书。", "这是什么书？"],
-    "answer": 1
-  }
-]
-
-要求：
-1. 返回 4~6 道题
-2. 每题必须包含 text、options、answer
-3. options 必须是 4 个选项
-4. answer 必须是 0 到 3 的整数
-5. 不要输出任何额外文字`;
     default:
       return buildLessonPrompt(lesson, module);
   }
@@ -254,7 +234,6 @@ export function buildQuizPrompt(lesson: number, module: string, count: number = 
     grammar: "语法",
     text: "课文",
     examples: "例句",
-    listening: "听力",
   };
   const moduleName = moduleNames[module] || module;
   return `请根据《大家的日语》第${lesson}课的${moduleName}内容，出${count}道选择题。`;

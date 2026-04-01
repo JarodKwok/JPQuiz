@@ -4,7 +4,6 @@ import type { AIMessage, AISettings, Module } from "@/types";
 import type {
   ExamplesContent,
   GrammarItem,
-  ListeningItem,
   TextContent,
   VocabularyItem,
 } from "@/types/content";
@@ -94,13 +93,6 @@ function formatExamplesContext(content: ExamplesContent, limit: number) {
   return [patterns, examples].filter(Boolean).join("\n");
 }
 
-function formatListeningContext(items: ListeningItem[], limit: number) {
-  return items
-    .slice(0, limit)
-    .map((item, index) => `- Q${index + 1}：${item.text}`)
-    .join("\n");
-}
-
 function buildModuleContextText(
   lessonId: number,
   module: Module,
@@ -118,8 +110,6 @@ function buildModuleContextText(
       return formatTextContext(content as TextContent, itemLimit);
     case "examples":
       return formatExamplesContext(content as ExamplesContent, itemLimit);
-    case "listening":
-      return formatListeningContext(content as ListeningItem[], itemLimit);
     default:
       return "";
   }
@@ -189,7 +179,7 @@ async function buildLearnerSnapshotText(
   return [
     `当前课次：第 ${lessonId} 課`,
     `当前模块：${module}`,
-    `本课掌握度：单词 ${lessonProgress.vocabulary}% / 语法 ${lessonProgress.grammar}% / 课文 ${lessonProgress.text}% / 例句 ${lessonProgress.examples}% / 听力 ${lessonProgress.listening}%`,
+    `本课掌握度：单词 ${lessonProgress.vocabulary}% / 语法 ${lessonProgress.grammar}% / 课文 ${lessonProgress.text}% / 例句 ${lessonProgress.examples}%`,
     `今日学习时长：${todayMinutes} 分钟`,
     weakItemsText ? `当前薄弱项（压缩后）：\n${weakItemsText}` : "",
     wrongAnswersText ? `最近错题（当前课次与模块）：\n${wrongAnswersText}` : "",

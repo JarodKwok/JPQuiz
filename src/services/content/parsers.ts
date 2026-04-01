@@ -3,7 +3,6 @@ import type {
   ExampleItem,
   ExamplesContent,
   GrammarItem,
-  ListeningItem,
   ModuleContent,
   SentencePatternItem,
   TextContent,
@@ -119,18 +118,6 @@ function isExamplesContent(value: unknown): value is ExamplesContent {
   );
 }
 
-function isListeningItem(value: unknown): value is ListeningItem {
-  return (
-    isRecord(value) &&
-    isString(value.text) &&
-    Array.isArray(value.options) &&
-    value.options.every(isString) &&
-    typeof value.answer === "number" &&
-    value.answer >= 0 &&
-    value.answer < value.options.length
-  );
-}
-
 export function parseModuleContent<M extends Module>(
   module: M,
   text: string
@@ -162,11 +149,6 @@ export function parseModuleContent<M extends Module>(
           patterns: [],
           examples: parsed,
         } as unknown as ModuleContent<M>;
-      }
-      break;
-    case "listening":
-      if (Array.isArray(parsed) && parsed.every(isListeningItem)) {
-        return parsed as ModuleContent<M>;
       }
       break;
     default:

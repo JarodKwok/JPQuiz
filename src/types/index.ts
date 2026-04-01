@@ -106,7 +106,6 @@ export const MODULES = [
   "grammar",
   "text",
   "examples",
-  "listening",
 ] as const;
 
 export type Module = (typeof MODULES)[number];

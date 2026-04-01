@@ -24,14 +24,12 @@ const EMPTY_STATS: HistoryStats = {
     grammar: 0,
     text: 0,
     examples: 0,
-    listening: 0,
   },
   moduleProgress: {
     vocabulary: 0,
     grammar: 0,
     text: 0,
     examples: 0,
-    listening: 0,
   },
   quizAccuracyByType: {
     multiple_choice: 0,
@@ -173,7 +171,6 @@ export default function HistoryPage() {
               ["语法", stats.moduleProgress.grammar, stats.moduleMasteryCounts.grammar],
               ["课文", stats.moduleProgress.text, stats.moduleMasteryCounts.text],
               ["例句", stats.moduleProgress.examples, stats.moduleMasteryCounts.examples],
-              ["听力", stats.moduleProgress.listening, stats.moduleMasteryCounts.listening],
             ].map(([label, progress, masteredCount]) => (
               <div key={String(label)}>
                 <div className="flex items-center justify-between text-sm mb-1">

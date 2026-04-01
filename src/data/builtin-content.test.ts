@@ -13,7 +13,6 @@ describe("builtin lesson content", () => {
       expect(lesson.examples.patterns.length).toBeGreaterThanOrEqual(3);
       expect(lesson.examples.examples.length).toBeGreaterThanOrEqual(4);
       expect(lesson.text.lines.length).toBeGreaterThanOrEqual(4);
-      expect(lesson.listening.length).toBeGreaterThanOrEqual(3);
     }
   });
 

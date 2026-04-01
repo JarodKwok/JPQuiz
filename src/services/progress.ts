@@ -121,7 +121,6 @@ export async function getLessonProgressSummary(lessonId: number) {
     grammar: 0,
     text: 0,
     examples: 0,
-    listening: 0,
   } satisfies Record<Module, number>;
 
   for (const item of progressList) {
@@ -159,7 +158,6 @@ export async function getHistoryStats(): Promise<HistoryStats> {
     grammar: 0,
     text: 0,
     examples: 0,
-    listening: 0,
   } satisfies Record<Module, number>;
 
   const moduleProgressTotals = {
@@ -167,7 +165,6 @@ export async function getHistoryStats(): Promise<HistoryStats> {
     grammar: { total: 0, count: 0 },
     text: { total: 0, count: 0 },
     examples: { total: 0, count: 0 },
-    listening: { total: 0, count: 0 },
   } satisfies Record<Module, { total: number; count: number }>;
 
   for (const mastery of masteryList) {
@@ -193,7 +190,6 @@ export async function getHistoryStats(): Promise<HistoryStats> {
       grammar: 0,
       text: 0,
       examples: 0,
-      listening: 0,
     } as Record<Module, number>
   );
 

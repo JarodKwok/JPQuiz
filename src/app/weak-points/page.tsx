@@ -11,7 +11,6 @@ const MODULE_LABELS: Record<Module, { label: string; icon: typeof BookOpen }> = 
   grammar: { label: "语法", icon: Languages },
   text: { label: "课文", icon: BookOpen },
   examples: { label: "例句", icon: BookOpen },
-  listening: { label: "听力", icon: BookOpen },
 };
 
 export default function WeakPointsPage() {

@@ -7,7 +7,6 @@ import {
   Languages,
   FileText,
   MessageSquareText,
-  Headphones,
   AlertTriangle,
   BarChart3,
   Settings,
@@ -21,7 +20,6 @@ const navItems = [
   { href: "/grammar", label: "语法", sublabel: "ぶんぽう", icon: Languages },
   { href: "/text", label: "课文", sublabel: "ほんぶん", icon: FileText },
   { href: "/examples", label: "例句", sublabel: "れいぶん", icon: MessageSquareText },
-  { href: "/listening", label: "听力", sublabel: "リスニング", icon: Headphones },
   { type: "divider" as const },
   { href: "/weak-points", label: "薄弱本", sublabel: "ふくしゅう", icon: AlertTriangle },
   { href: "/history", label: "学习记录", sublabel: "きろく", icon: BarChart3 },
@@ -93,8 +91,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
                   item.href === "/vocabulary" ||
                   item.href === "/grammar" ||
                   item.href === "/text" ||
-                  item.href === "/examples" ||
-                  item.href === "/listening"
+                  item.href === "/examples"
                     ? `${item.href}?lesson=${currentLesson}`
                     : item.href
                 }

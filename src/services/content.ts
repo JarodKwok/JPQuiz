@@ -118,10 +118,6 @@ export function getModuleItemKeys<M extends Module>(
           (item) => item.japanese
         ),
       ];
-    case "listening":
-      return (data as ModuleContent<"listening">).map(
-        (item, index) => `listening:${lessonId}:${index}:${item.text}`
-      );
     default:
       return [];
   }

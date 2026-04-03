@@ -20,6 +20,9 @@
 
 # misc
 .DS_Store
+/tmp/
+/books/
+TODO.md
 
 # generated audio files (too large for git)
 # vocab audio: regenerate with scripts/generate_books_audio.py

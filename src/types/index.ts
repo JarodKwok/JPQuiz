@@ -22,6 +22,8 @@ export interface AIProviderConfig {
   model: string;
   baseUrl: string;
   wireApi?: "chat" | "responses";
+  /** 仅自定义供应商需要，内置预设从 PROVIDER_PRESETS 取 */
+  displayName?: string;
 }
 
 export type AITeachingStyle = "concise" | "structured" | "coach";

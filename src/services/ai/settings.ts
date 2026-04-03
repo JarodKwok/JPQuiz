@@ -19,6 +19,56 @@ const EMPTY_PROVIDER_CONFIG: AIProviderConfig = {
   wireApi: "chat",
 };
 
+/* ------------------------------------------------------------------ */
+/*  供应商预设注册表 — 新增厂商只需在这里加一条                            */
+/* ------------------------------------------------------------------ */
+
+export interface ProviderPreset {
+  key: string;
+  name: string;
+  description: string;
+  defaultModel: string;
+  defaultBaseUrl: string;
+  defaultWireApi: "chat" | "responses";
+}
+
+export const PROVIDER_PRESETS: ProviderPreset[] = [
+  {
+    key: "openai",
+    name: "OpenAI / 代理",
+    description: "默认预填 gpt-5.4 + Responses API",
+    defaultModel: "gpt-5.4",
+    defaultBaseUrl: "https://gmn.chuangzuoli.com",
+    defaultWireApi: "responses",
+  },
+  {
+    key: "openrouter",
+    name: "OpenRouter",
+    description: "聚合多厂商模型，统一 API 入口",
+    defaultModel: "anthropic/claude-sonnet-4",
+    defaultBaseUrl: "https://openrouter.ai/api/v1",
+    defaultWireApi: "chat",
+  },
+  {
+    key: "kimi",
+    name: "Kimi (月之暗面)",
+    description: "Moonshot 系列模型",
+    defaultModel: "moonshot-v1-8k",
+    defaultBaseUrl: "https://api.moonshot.cn/v1",
+    defaultWireApi: "chat",
+  },
+  {
+    key: "deepseek",
+    name: "DeepSeek",
+    description: "DeepSeek Chat / Reasoner",
+    defaultModel: "deepseek-chat",
+    defaultBaseUrl: "https://api.deepseek.com/v1",
+    defaultWireApi: "chat",
+  },
+];
+
+const PRESET_MAP = new Map(PROVIDER_PRESETS.map((p) => [p.key, p]));
+
 const DEFAULT_MEMORY_POLICY: AIMemoryPolicySettings = {
   recentTurns: 3,
   weakItemsLimit: 5,
@@ -38,28 +88,22 @@ const DEFAULT_TUTOR_SETTINGS: AITutorSettings = {
   memoryPolicy: DEFAULT_MEMORY_POLICY,
 };
 
+function buildDefaultProviders(): Record<string, AIProviderConfig> {
+  const providers: Record<string, AIProviderConfig> = {};
+  for (const preset of PROVIDER_PRESETS) {
+    providers[preset.key] = {
+      apiKey: "",
+      model: preset.defaultModel,
+      baseUrl: preset.defaultBaseUrl,
+      wireApi: preset.defaultWireApi,
+    };
+  }
+  return providers;
+}
+
 export const DEFAULT_AI_SETTINGS: AISettings = {
   activeProvider: "openai",
-  providers: {
-    openai: {
-      apiKey: "",
-      model: "gpt-5.4",
-      baseUrl: "https://gmn.chuangzuoli.com",
-      wireApi: "responses",
-    },
-    kimi: {
-      apiKey: "",
-      model: "moonshot-v1-8k",
-      baseUrl: "https://api.moonshot.cn/v1",
-      wireApi: "chat",
-    },
-    deepseek: {
-      apiKey: "",
-      model: "deepseek-chat",
-      baseUrl: "https://api.deepseek.com/v1",
-      wireApi: "chat",
-    },
-  },
+  providers: buildDefaultProviders(),
   tutor: DEFAULT_TUTOR_SETTINGS,
 };
 
@@ -82,7 +126,9 @@ function normalizeProviderConfig(
     ...(config ?? {}),
   };
 
-  return {
+  const isCustom = !PRESET_MAP.has(provider);
+
+  const result: AIProviderConfig = {
     apiKey: merged.apiKey.trim(),
     model: merged.model.trim() || defaults.model,
     baseUrl: merged.baseUrl.trim() || defaults.baseUrl,
@@ -91,6 +137,13 @@ function normalizeProviderConfig(
         ? merged.wireApi
         : defaults.wireApi,
   };
+
+  // 自定义供应商保留 displayName
+  if (isCustom && merged.displayName) {
+    result.displayName = merged.displayName.trim();
+  }
+
+  return result;
 }
 
 function normalizeMemoryPolicy(
@@ -220,4 +273,20 @@ export function normalizeStoredAIConfig(
 
 export function getDefaultTutorSettings() {
   return DEFAULT_TUTOR_SETTINGS;
+}
+
+/** 获取供应商显示信息：优先从预设取，自定义供应商则用 config.displayName */
+export function getProviderDisplayInfo(
+  key: string,
+  config?: AIProviderConfig
+): { name: string; description: string; isPreset: boolean } {
+  const preset = PRESET_MAP.get(key);
+  if (preset) {
+    return { name: preset.name, description: preset.description, isPreset: true };
+  }
+  return {
+    name: config?.displayName || key,
+    description: "自定义 OpenAI 兼容 API",
+    isPreset: false,
+  };
 }

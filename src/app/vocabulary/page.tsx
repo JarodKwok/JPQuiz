@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Volume2, RefreshCw, Loader2, Eye, EyeOff, Hash, Languages } from "lucide-react";
+import { Volume2, RefreshCw, Loader2, Eye, EyeOff, Hash, Languages, BookOpen } from "lucide-react";
 import MasteryButtons from "@/components/lesson/MasteryButtons";
 import ModuleQuizPanel from "@/components/quiz/ModuleQuizPanel";
 import ModuleModeTabs from "@/components/quiz/ModuleModeTabs";
@@ -18,6 +18,7 @@ type VocabularyViewItem = VocabularyItem & {
   mastery?: MasteryLevel;
   showMeaning?: boolean;
   showKanji?: boolean;
+  showJapanese?: boolean;
 };
 
 type FilterMode = "all" | "weak" | "fuzzy" | "unlearned";
@@ -29,6 +30,7 @@ export default function VocabularyPage() {
   const [words, setWords] = useState<VocabularyViewItem[]>([]);
   const [mode, setMode] = useState<"study" | "quiz">("study");
   const [showNumbers, setShowNumbers] = useState(true);
+  const [showJapaneseGlobal, setShowJapaneseGlobal] = useState(true);
   const [showMeaningGlobal, setShowMeaningGlobal] = useState(true);
   const [showKanjiGlobal, setShowKanjiGlobal] = useState(false);
   const [filter, setFilter] = useState<FilterMode>("all");
@@ -51,6 +53,7 @@ export default function VocabularyPage() {
         const nextWords = response.data.map((word) => ({
           ...word,
           mastery: masteryMap[word.word] as MasteryLevel | undefined,
+          showJapanese: true,
           showMeaning: true,
           showKanji: false,
         }));
@@ -80,6 +83,13 @@ export default function VocabularyPage() {
   useEffect(() => {
     setFilter("all");
   }, [currentLesson]);
+
+  // 当全局日文开关变化时，更新所有单词
+  useEffect(() => {
+    setWords((prev) =>
+      prev.map((word) => ({ ...word, showJapanese: showJapaneseGlobal }))
+    );
+  }, [showJapaneseGlobal]);
 
   // 当全局中文开关变化时，更新所有单词
   useEffect(() => {
@@ -111,7 +121,7 @@ export default function VocabularyPage() {
     const percent = await syncLearningProgress(
       currentLesson,
       "vocabulary",
-      nextWords.map(({ mastery, showMeaning, showKanji, ...item }) => item),
+      nextWords.map(({ mastery, showMeaning, showKanji, showJapanese, ...item }) => item),
       masteryMap
     );
 
@@ -119,6 +129,14 @@ export default function VocabularyPage() {
     if (percent === 100 && !prevAllMastered) {
       playVictory();
     }
+  };
+
+  const toggleWordJapanese = (index: number) => {
+    setWords((prev) =>
+      prev.map((item, i) =>
+        i === index ? { ...item, showJapanese: !item.showJapanese } : item
+      )
+    );
   };
 
   const toggleWordMeaning = (index: number) => {
@@ -210,6 +228,19 @@ export default function VocabularyPage() {
               >
                 <Hash size={14} />
                 序号
+              </button>
+              {/* 日文开关 */}
+              <button
+                onClick={() => setShowJapaneseGlobal(!showJapaneseGlobal)}
+                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5 ${
+                  showJapaneseGlobal
+                    ? "border-accent text-accent bg-accent/5"
+                    : "border-border text-text-secondary hover:border-accent/40 hover:text-accent"
+                }`}
+                title={showJapaneseGlobal ? "隐藏日文" : "显示日文"}
+              >
+                <BookOpen size={14} />
+                日文
               </button>
               {/* 汉字开关 */}
               {kanjiCount > 0 && (
@@ -304,7 +335,7 @@ export default function VocabularyPage() {
         <ModuleQuizPanel
           module="vocabulary"
           lessonId={currentLesson}
-          content={words.map(({ mastery, showMeaning, showKanji, ...item }) => item)}
+          content={words.map(({ mastery, showMeaning, showKanji, showJapanese, ...item }) => item)}
           contentLoading={loading}
           contentError={error}
         />
@@ -373,9 +404,15 @@ export default function VocabularyPage() {
                                 {originalIndex + 1}.
                               </span>
                             )}
-                            <span className="text-xl font-medium text-text">
-                              {word.word}
-                            </span>
+                            {word.showJapanese ? (
+                              <span className="text-xl font-medium text-text">
+                                {word.word}
+                              </span>
+                            ) : (
+                              <span className="text-xl text-text-muted italic">
+                                [日文已隐藏]
+                              </span>
+                            )}
                             {word.kanji && word.showKanji && (
                               <span className="text-xl font-medium text-accent bg-accent/5 px-2 py-0.5 rounded">
                                 {word.kanji}
@@ -392,6 +429,17 @@ export default function VocabularyPage() {
 
                           {/* 第二行：控制按钮 + 中文释义 */}
                           <div className="flex items-center gap-3 mt-2">
+                            <button
+                              onClick={() => toggleWordJapanese(originalIndex)}
+                              className={`p-1.5 rounded-lg transition-colors ${
+                                word.showJapanese
+                                  ? "hover:bg-accent/10 text-text-muted hover:text-accent"
+                                  : "bg-accent/10 text-accent"
+                              }`}
+                              title={word.showJapanese ? "隐藏日文" : "显示日文"}
+                            >
+                              <BookOpen size={14} />
+                            </button>
                             {word.kanji && (
                               <button
                                 onClick={() => toggleWordKanji(originalIndex)}

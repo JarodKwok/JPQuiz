@@ -115,60 +115,79 @@ export default function TextPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6 gap-4">
-        <div>
-          <h1 className="text-lg font-semibold text-text">
-            课文学习
-            <span className="text-text-muted font-normal ml-2 text-sm">
-              ほんぶん
-            </span>
-          </h1>
-          <p className="text-xs text-text-muted mt-1">
-            第 {currentLesson} 課
-            {textData?.title ? ` · ${textData.title}` : ""}
-            {source && (
-              <span className="ml-2">
-                ·{" "}
-                {source === "builtin"
-                  ? "内置内容"
-                  : source === "cache"
-                    ? "缓存内容"
-                    : "AI 生成"}
+      <div className="sticky top-0 z-10 bg-bg -mx-4 px-4 sm:-mx-6 sm:px-6 pb-3 pt-1 border-b border-border/50 mb-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-lg font-semibold text-text">
+              课文学习
+              <span className="text-text-muted font-normal ml-2 text-sm">
+                ほんぶん
               </span>
-            )}
-          </p>
-        </div>
-        {mode === "study" ? (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowTranslation(!showTranslation)}
-              className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-border
-                         text-text-secondary hover:border-primary/40 hover:text-primary transition-colors"
-            >
-              {showTranslation ? <EyeOff size={14} /> : <Eye size={14} />}
-              {showTranslation ? "隐藏翻译" : "显示翻译"}
-            </button>
-            <button
-              onClick={handleReadAll}
-              disabled={!textData}
-              className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors
-                ${isReadingAll
-                  ? "border-red-400/60 text-red-500 hover:border-red-500"
-                  : "border-border text-text-secondary hover:border-primary/40 hover:text-primary"
-                }`}
-            >
-              {isReadingAll ? (
-                <>
-                  <StopCircle size={14} />
-                  停止朗读
-                </>
-              ) : (
-                <>
-                  <PlayCircle size={14} />
-                  朗读全文
-                </>
+            </h1>
+            <p className="text-xs text-text-muted mt-0.5">
+              第 {currentLesson} 課
+              {textData?.title ? ` · ${textData.title}` : ""}
+              {source && (
+                <span className="ml-2">
+                  ·{" "}
+                  {source === "builtin"
+                    ? "内置内容"
+                    : source === "cache"
+                      ? "缓存内容"
+                      : "AI 生成"}
+                </span>
               )}
-            </button>
+            </p>
+          </div>
+          {mode === "study" ? (
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowTranslation(!showTranslation)}
+                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors ${
+                  showTranslation
+                    ? "border-primary text-primary bg-primary/5"
+                    : "border-border text-text-secondary hover:border-primary/40 hover:text-primary"
+                }`}
+                title={showTranslation ? "隐藏中文" : "显示中文"}
+              >
+                {showTranslation ? <Eye size={14} /> : <EyeOff size={14} />}
+                中文
+              </button>
+              <button
+                onClick={handleReadAll}
+                disabled={!textData}
+                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-colors
+                  ${isReadingAll
+                    ? "border-red-400/60 text-red-500 hover:border-red-500"
+                    : "border-border text-text-secondary hover:border-primary/40 hover:text-primary"
+                  }`}
+              >
+                {isReadingAll ? (
+                  <>
+                    <StopCircle size={14} />
+                    停止朗读
+                  </>
+                ) : (
+                  <>
+                    <PlayCircle size={14} />
+                    朗读全文
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => void loadText(true)}
+                disabled={loading}
+                className="p-1.5 rounded-lg border border-border text-text-secondary
+                           hover:border-primary/40 hover:text-primary transition-colors"
+              >
+                {loading ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={16} />
+                )}
+              </button>
+            </div>
+          ) : (
             <button
               onClick={() => void loadText(true)}
               disabled={loading}
@@ -181,24 +200,11 @@ export default function TextPage() {
                 <RefreshCw size={16} />
               )}
             </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => void loadText(true)}
-            disabled={loading}
-            className="p-1.5 rounded-lg border border-border text-text-secondary
-                       hover:border-primary/40 hover:text-primary transition-colors"
-          >
-            {loading ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <RefreshCw size={16} />
-            )}
-          </button>
-        )}
+          )}
+        </div>
       </div>
 
-      <div className="mb-6">
+      <div className="mb-4">
         <ModuleModeTabs mode={mode} onChange={setMode} />
       </div>
 

@@ -87,43 +87,58 @@ export default function GrammarPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-lg font-semibold text-text">
-            语法精讲
-            <span className="text-text-muted font-normal ml-2 text-sm">
-              ぶんぽう
-            </span>
-          </h1>
-          <p className="text-xs text-text-muted mt-1">
-            第 {currentLesson} 課 · {points.length} 个语法点
-            {source && (
-              <span className="ml-2">
-                ·{" "}
-                {source === "builtin"
-                  ? "内置内容"
-                  : source === "cache"
-                    ? "缓存内容"
-                    : "AI 生成"}
+      <div className="sticky top-0 z-10 bg-bg -mx-4 px-4 sm:-mx-6 sm:px-6 pb-3 pt-1 border-b border-border/50 mb-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-lg font-semibold text-text">
+              语法精讲
+              <span className="text-text-muted font-normal ml-2 text-sm">
+                ぶんぽう
               </span>
-            )}
-          </p>
-        </div>
-        {mode === "study" ? (
-          <div className="flex items-center gap-2">
-            {/* 序号开关 */}
-            <button
-              onClick={() => setShowNumbers(!showNumbers)}
-              className={`text-xs px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5 ${
-                showNumbers
-                  ? "border-primary text-primary bg-primary/5"
-                  : "border-border text-text-secondary hover:border-primary/40 hover:text-primary"
-              }`}
-              title={showNumbers ? "隐藏序号" : "显示序号"}
-            >
-              <Hash size={14} />
-              序号
-            </button>
+            </h1>
+            <p className="text-xs text-text-muted mt-0.5">
+              第 {currentLesson} 課 · {points.length} 个语法点
+              {source && (
+                <span className="ml-2">
+                  ·{" "}
+                  {source === "builtin"
+                    ? "内置内容"
+                    : source === "cache"
+                      ? "缓存内容"
+                      : "AI 生成"}
+                </span>
+              )}
+            </p>
+          </div>
+          {mode === "study" ? (
+            <div className="flex items-center gap-2">
+              {/* 序号开关 */}
+              <button
+                onClick={() => setShowNumbers(!showNumbers)}
+                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5 ${
+                  showNumbers
+                    ? "border-primary text-primary bg-primary/5"
+                    : "border-border text-text-secondary hover:border-primary/40 hover:text-primary"
+                }`}
+                title={showNumbers ? "隐藏序号" : "显示序号"}
+              >
+                <Hash size={14} />
+                序号
+              </button>
+              <button
+                onClick={() => void loadPoints(true)}
+                disabled={loading}
+                className="p-1.5 rounded-lg border border-border text-text-secondary
+                           hover:border-primary/40 hover:text-primary transition-colors"
+              >
+                {loading ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <RefreshCw size={16} />
+                )}
+              </button>
+            </div>
+          ) : (
             <button
               onClick={() => void loadPoints(true)}
               disabled={loading}
@@ -136,24 +151,11 @@ export default function GrammarPage() {
                 <RefreshCw size={16} />
               )}
             </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => void loadPoints(true)}
-            disabled={loading}
-            className="p-1.5 rounded-lg border border-border text-text-secondary
-                       hover:border-primary/40 hover:text-primary transition-colors"
-          >
-            {loading ? (
-              <Loader2 size={16} className="animate-spin" />
-            ) : (
-              <RefreshCw size={16} />
-            )}
-          </button>
-        )}
+          )}
+        </div>
       </div>
 
-      <div className="mb-6">
+      <div className="mb-4">
         <ModuleModeTabs mode={mode} onChange={setMode} />
       </div>
 

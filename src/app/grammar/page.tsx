@@ -251,10 +251,21 @@ export default function GrammarPage() {
                           <span className="text-[11px] text-text-muted uppercase tracking-wider">
                             例句
                           </span>
-                          <p className="text-sm text-text mt-1">{point.example}</p>
-                          <p className="text-xs text-text-secondary mt-0.5">
-                            {point.exampleTranslation}
-                          </p>
+                          <div className="mt-1 space-y-2">
+                            {point.examples.map((ex, exIdx) => (
+                              <div key={exIdx}>
+                                <p className="text-sm text-text">
+                                  {point.examples.length > 1 && (
+                                    <span className="text-text-muted mr-1.5">{exIdx + 1}.</span>
+                                  )}
+                                  {ex.japanese}
+                                </p>
+                                <p className="text-xs text-text-secondary mt-0.5 pl-4">
+                                  {ex.translation}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
                         </div>
 
                         {point.tip && (

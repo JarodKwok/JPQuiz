@@ -55,6 +55,10 @@ function isVocabularyItem(value: unknown): value is VocabularyItem {
   );
 }
 
+function isGrammarExample(value: unknown): value is { japanese: string; translation: string } {
+  return isRecord(value) && isString(value.japanese) && isString(value.translation);
+}
+
 function isGrammarItem(value: unknown): value is GrammarItem {
   return (
     isRecord(value) &&
@@ -62,8 +66,9 @@ function isGrammarItem(value: unknown): value is GrammarItem {
     isString(value.name) &&
     isString(value.meaning) &&
     isString(value.connection) &&
-    isString(value.example) &&
-    isString(value.exampleTranslation) &&
+    Array.isArray(value.examples) &&
+    value.examples.length > 0 &&
+    value.examples.every(isGrammarExample) &&
     (value.tip === undefined || typeof value.tip === "string")
   );
 }

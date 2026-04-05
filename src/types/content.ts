@@ -8,13 +8,17 @@ export interface VocabularyItem {
   kanji?: string; // 日汉字形式（如果有）
 }
 
+export interface GrammarExample {
+  japanese: string;
+  translation: string;
+}
+
 export interface GrammarItem {
   id: string;
   name: string;
   meaning: string;
   connection: string;
-  example: string;
-  exampleTranslation: string;
+  examples: GrammarExample[];
   tip?: string;
 }
 

@@ -171,8 +171,7 @@ export function buildQuizTargetCandidates<M extends Module>(
           item.name,
           item.meaning,
           item.connection,
-          item.example,
-          item.exampleTranslation,
+          ...item.examples.flatMap((ex) => [ex.japanese, ex.translation]),
           item.tip,
         ]),
       })) as QuizTargetCandidate[];

@@ -158,17 +158,20 @@ export function buildModuleContentPrompt(lesson: number, module: string): string
     "name": "これ / それ / あれ",
     "meaning": "这个 / 那个 / 那个（远处）",
     "connection": "これ/それ/あれ + は + 名词 + です",
-    "example": "これは 辞書です。",
-    "exampleTranslation": "这是词典。",
+    "examples": [
+      { "japanese": "これは 辞書です。", "translation": "这是词典。" },
+      { "japanese": "それは 何ですか。", "translation": "那是什么？" }
+    ],
     "tip": "可选字段"
   }
 ]
 
 要求：
 1. 返回 3~8 个语法点
-2. 每项必须包含 id、name、meaning、connection、example、exampleTranslation
-3. tip 为可选
-4. 不要输出任何额外文字`;
+2. 每项必须包含 id、name、meaning、connection、examples
+3. examples 至少 1 个，尽量提供 2~3 个例句
+4. tip 为可选
+5. 不要输出任何额外文字`;
     case "text":
       return `请生成《大家的日语》第${lesson}课的课文学习内容。
 

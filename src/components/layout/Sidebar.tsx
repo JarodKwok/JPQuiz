@@ -55,7 +55,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         )}
       >
         {/* Logo */}
-        <div className="flex items-center justify-between px-5 h-14 border-b border-border">
+        <div className="flex items-center justify-between px-5 h-14 border-b border-border bg-gradient-to-r from-sakura/20 to-transparent">
           <div className="flex items-center gap-2">
             <span className="text-xl">🌸</span>
             <span className="font-semibold text-sm text-text tracking-wide">
@@ -122,7 +122,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
         </nav>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-border text-[11px] text-text-muted">
+        <div className="px-5 py-3 border-t border-border text-[11px] text-text-muted bg-gradient-to-r from-matcha/8 to-transparent">
           《大家的日语》初级 I · 第1〜25课
         </div>
       </aside>

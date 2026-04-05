@@ -6,6 +6,7 @@ export interface VocabularyItem {
   meaning: string;
   example?: string;
   kanji?: string; // 日汉字形式（如果有）
+  tags?: string[]; // 语义分组标签（词性 + 主题）
 }
 
 export interface GrammarExample {

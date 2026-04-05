@@ -1,21 +1,24 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #4A90A4;
-  --color-primary-light: #6BB0C4;
-  --color-primary-dark: #357080;
-  --color-accent: #E8937A;
-  --color-accent-light: #F0B0A0;
-  --color-bg: #FAFAF8;
+  /* 日系配色：藍鼠 × 桜 × 抹茶 */
+  --color-primary: #3D7A8A;
+  --color-primary-light: #5A9BAD;
+  --color-primary-dark: #2B5E6B;
+  --color-accent: #D46B6B;
+  --color-accent-light: #E8A0A0;
+  --color-sakura: #F2C4C4;
+  --color-matcha: #8DB580;
+  --color-bg: #FAF8F5;
   --color-bg-card: #FFFFFF;
-  --color-bg-sidebar: #F5F3EF;
-  --color-border: #E8E4DE;
-  --color-text: #2C2C2C;
-  --color-text-secondary: #6B6B6B;
-  --color-text-muted: #9B9B9B;
-  --color-mastered: #7DB87D;
-  --color-fuzzy: #E8C55A;
-  --color-weak: #D4756A;
+  --color-bg-sidebar: #F3F0EB;
+  --color-border: #DDD8D0;
+  --color-text: #1A1A1A;
+  --color-text-secondary: #4A4A4A;
+  --color-text-muted: #787878;
+  --color-mastered: #6EA76E;
+  --color-fuzzy: #D4A83A;
+  --color-weak: #C45B50;
 
   --font-sans: "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic",
     "Meiryo", sans-serif;

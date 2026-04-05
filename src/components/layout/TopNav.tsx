@@ -60,7 +60,7 @@ export default function TopNav({ onMenuClick }: TopNavProps) {
   };
 
   return (
-    <header className="h-14 border-b border-border bg-bg-card flex items-center px-4 gap-4 shrink-0">
+    <header className="h-14 border-b border-border bg-bg-card flex items-center px-4 gap-4 shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
       {/* Mobile menu button */}
       <button
         onClick={onMenuClick}

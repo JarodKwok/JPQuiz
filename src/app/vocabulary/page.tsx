@@ -5,6 +5,8 @@ import { Volume2, RefreshCw, Loader2, Eye, EyeOff, Hash, Languages, BookOpen } f
 import MasteryButtons from "@/components/lesson/MasteryButtons";
 import ModuleQuizPanel from "@/components/quiz/ModuleQuizPanel";
 import ModuleModeTabs from "@/components/quiz/ModuleModeTabs";
+import TagFilterChips from "@/components/vocabulary/TagFilterChips";
+import PracticeInput from "@/components/vocabulary/PracticeInput";
 import { useModulePage } from "@/hooks/useModulePage";
 import { useStudySession } from "@/hooks/useStudySession";
 import { getModuleContent } from "@/services/content";
@@ -34,6 +36,9 @@ export default function VocabularyPage() {
   const [showMeaningGlobal, setShowMeaningGlobal] = useState(true);
   const [showKanjiGlobal, setShowKanjiGlobal] = useState(false);
   const [filter, setFilter] = useState<FilterMode>("all");
+  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  // 快照：记录进入筛选时符合条件的词索引，防止标记"会了"后立即消失
+  const [snapshotIndices, setSnapshotIndices] = useState<Set<number> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [source, setSource] = useState<"builtin" | "cache" | "ai" | null>(null);
@@ -42,6 +47,7 @@ export default function VocabularyPage() {
     async (forceRefresh = false) => {
       setLoading(true);
       setError("");
+      setSnapshotIndices(null);
 
       try {
         const response = await getModuleContent({
@@ -82,6 +88,8 @@ export default function VocabularyPage() {
   // 课次切换时重置筛选
   useEffect(() => {
     setFilter("all");
+    setTagFilter(null);
+    setSnapshotIndices(null);
   }, [currentLesson]);
 
   // 当全局日文开关变化时，更新所有单词
@@ -159,6 +167,24 @@ export default function VocabularyPage() {
     void speakVocab(text, currentLesson, reading);
   };
 
+  // 筛选条件变化时，拍摄快照（锁定当前符合条件的词索引）
+  useEffect(() => {
+    if (filter === "all" && !tagFilter) {
+      setSnapshotIndices(null);
+      return;
+    }
+    const indices = new Set<number>();
+    words.forEach((word, i) => {
+      if (tagFilter && !word.tags?.includes(tagFilter)) return;
+      if (filter === "all") { indices.add(i); return; }
+      if (filter === "weak" && word.mastery === "weak") { indices.add(i); return; }
+      if (filter === "fuzzy" && word.mastery === "fuzzy") { indices.add(i); return; }
+      if (filter === "unlearned" && (word.mastery === "weak" || word.mastery === "fuzzy" || !word.mastery)) { indices.add(i); return; }
+    });
+    setSnapshotIndices(indices);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在筛选条件变化时重算，不跟踪 words
+  }, [filter, tagFilter]);
+
   // 统计各筛选数量
   const kanjiCount = words.filter((w) => w.kanji).length;
   const weakCount = words.filter((w) => w.mastery === "weak").length;
@@ -168,9 +194,14 @@ export default function VocabularyPage() {
   ).length;
 
   // 筛选后的单词列表（保留原始索引用于音频）
+  // 有快照时使用快照索引（防止标记后立即消失），否则实时筛选
   const filteredWords = words
     .map((word, originalIndex) => ({ word, originalIndex }))
-    .filter(({ word }) => {
+    .filter(({ word, originalIndex }) => {
+      if (snapshotIndices) return snapshotIndices.has(originalIndex);
+      // 标签筛选
+      if (tagFilter && !word.tags?.includes(tagFilter)) return false;
+      // 掌握度筛选
       if (filter === "all") return true;
       if (filter === "weak") return word.mastery === "weak";
       if (filter === "fuzzy") return word.mastery === "fuzzy";
@@ -325,6 +356,15 @@ export default function VocabularyPage() {
             ))}
           </div>
         )}
+
+        {/* 标签分组筛选（仅学习模式显示） */}
+        {mode === "study" && (
+          <TagFilterChips
+            words={words}
+            activeTag={tagFilter}
+            onTagChange={setTagFilter}
+          />
+        )}
       </div>
 
       <div className="mb-4">
@@ -335,7 +375,10 @@ export default function VocabularyPage() {
         <ModuleQuizPanel
           module="vocabulary"
           lessonId={currentLesson}
-          content={words.map(({ mastery, showMeaning, showKanji, showJapanese, ...item }) => item)}
+          content={(tagFilter
+            ? words.filter((w) => w.tags?.includes(tagFilter))
+            : words
+          ).map(({ mastery, showMeaning, showKanji, showJapanese, ...item }) => item)}
           contentLoading={loading}
           contentError={error}
         />
@@ -471,6 +514,18 @@ export default function VocabularyPage() {
                               </span>
                             )}
                           </div>
+
+                          {/* 听写练习输入 */}
+                          <PracticeInput
+                            word={word.word}
+                            kanji={word.kanji}
+                            onAutoCheck={(correct) => {
+                              void handleMastery(
+                                originalIndex,
+                                correct ? "mastered" : "weak"
+                              );
+                            }}
+                          />
 
                           {/* 例句 */}
                           {word.example && word.showMeaning && (

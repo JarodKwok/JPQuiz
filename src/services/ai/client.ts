@@ -54,8 +54,17 @@ function parseErrorMessage(errText: string) {
 
 export async function streamAIText(
   messages: AIMessage[],
-  onDelta?: (chunk: string, fullText: string) => void
+  onDeltaOrOptions?:
+    | ((chunk: string, fullText: string) => void)
+    | { onDelta?: (chunk: string, fullText: string) => void; jsonMode?: boolean },
 ) {
+  const onDelta =
+    typeof onDeltaOrOptions === "function"
+      ? onDeltaOrOptions
+      : onDeltaOrOptions?.onDelta;
+  const jsonMode =
+    typeof onDeltaOrOptions === "object" ? onDeltaOrOptions?.jsonMode : false;
+
   const { provider, config } = await getStoredAIConfig();
 
   let res: Response | null = null;
@@ -70,6 +79,7 @@ export async function streamAIText(
           messages,
           provider,
           config,
+          ...(jsonMode ? { jsonMode: true } : {}),
         }),
       });
 

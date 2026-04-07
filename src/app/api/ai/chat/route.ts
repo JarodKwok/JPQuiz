@@ -115,7 +115,7 @@ async function fetchWithRetry(
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { messages, config, provider } = body;
+    const { messages, config, provider, jsonMode } = body;
     const normalizedConfig = normalizeStoredAIConfig(provider, config);
 
     if (!normalizedConfig.apiKey) {
@@ -131,11 +131,15 @@ export async function POST(req: NextRequest) {
     if (wireApi === "responses") {
       return handleResponsesAPI(baseUrl, normalizedConfig, messages);
     } else {
-      return handleChatCompletionsAPI(baseUrl, normalizedConfig, messages);
+      return handleChatCompletionsAPI(baseUrl, normalizedConfig, messages, {
+        jsonMode: !!jsonMode,
+        provider: provider || "",
+      });
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
-    console.error("[AI API] Exception:", message);
+    const stack = err instanceof Error ? err.stack : "";
+    console.error("[AI API] Exception:", message, "\n", stack);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
@@ -144,29 +148,59 @@ export async function POST(req: NextRequest) {
 async function handleChatCompletionsAPI(
   baseUrl: string,
   config: { apiKey: string; model: string },
-  messages: { role: string; content: string }[]
+  messages: { role: string; content: string }[],
+  options?: { jsonMode?: boolean; provider?: string }
 ) {
   const endpoint = buildChatEndpoint(baseUrl);
 
-  const res = await fetchWithRetry(endpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: config.model || "gpt-5.4",
-      messages,
-      temperature: 0.7,
-      max_tokens: 2048,
-      stream: true,
-    }),
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${config.apiKey}`,
+  };
+
+  // OpenRouter 推荐的额外 headers
+  if (options?.provider === "openrouter") {
+    headers["HTTP-Referer"] = "https://jpquiz.app";
+    headers["X-Title"] = "JPQuiz";
+  }
+
+  const baseBody: Record<string, unknown> = {
+    model: config.model || "gpt-5.4",
+    messages,
+    temperature: 0.7,
+    max_tokens: 2048,
+  };
+
+  console.log("[AI Chat API] Request:", {
+    endpoint,
+    model: baseBody.model,
+    provider: options?.provider,
+    messageCount: messages.length,
   });
+
+  // 先尝试 streaming，失败则回退 non-streaming
+  let res = await fetchWithRetry(endpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ ...baseBody, stream: true }),
+  });
+
+  console.log("[AI Chat API] Stream response:", res.status, res.headers.get("content-type"));
+
+  if (!res.ok) {
+    console.warn("[AI Chat API] Stream failed, retrying without streaming...");
+    res = await fetchWithRetry(endpoint, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(baseBody),
+    });
+    console.log("[AI Chat API] Non-stream response:", res.status);
+  }
 
   if (!res.ok) {
     const errText = await res.text();
     const message = extractUpstreamErrorMessage(errText);
-    console.error("[AI Chat API] Error:", res.status, message);
+    console.error("[AI Chat API] Error:", res.status, message, errText.slice(0, 500));
     return NextResponse.json(
       {
         error:

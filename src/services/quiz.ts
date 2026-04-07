@@ -26,6 +26,7 @@ import {
   QUIZ_TARGET_RESOLUTION_SYSTEM_PROMPT,
 } from "./prompts";
 import { saveWrongAnswer } from "./wrongAnswers";
+import { getTagLabel } from "@/data/vocabulary-tags";
 
 interface QuizTargetCandidate extends QuizResolvedTarget {
   masteryKey: string;
@@ -89,10 +90,23 @@ function extractJsonValue(text: string): unknown {
 
   const firstBraceIndex = trimmed.search(/[\[{]/);
   if (firstBraceIndex !== -1) {
-    return JSON.parse(trimmed.slice(firstBraceIndex));
+    const jsonPart = trimmed.slice(firstBraceIndex);
+    try {
+      return JSON.parse(jsonPart);
+    } catch {
+      // Try trimming trailing non-JSON text
+      const closingChar = jsonPart[0] === "[" ? "]" : "}";
+      const lastClose = jsonPart.lastIndexOf(closingChar);
+      if (lastClose > 0) {
+        return JSON.parse(jsonPart.slice(0, lastClose + 1));
+      }
+    }
   }
 
-  throw new Error("AI 返回内容不是有效 JSON。");
+  const preview = trimmed.length > 120 ? trimmed.slice(0, 120) + "…" : trimmed;
+  throw new Error(
+    `AI 返回内容不是有效 JSON。${preview ? `\n返回内容：${preview}` : "（空响应）"}`
+  );
 }
 
 export function normalizeQuizTextAnswer(value: string) {
@@ -156,6 +170,7 @@ export function buildQuizTargetCandidates<M extends Module>(
           item.reading,
           item.meaning,
           item.example,
+          ...(item.tags || []).flatMap((tag) => [tag, getTagLabel(tag)]),
         ]),
       })) as QuizTargetCandidate[];
     case "grammar":
@@ -334,23 +349,26 @@ export async function resolveQuizTargets<M extends Module>({
   if (localMatches.length > 0) return localMatches;
 
   try {
-    const response = await streamAIText([
-      { role: "system", content: QUIZ_TARGET_RESOLUTION_SYSTEM_PROMPT },
-      {
-        role: "user",
-        content: buildQuizTargetResolutionPrompt({
-          lessonId,
-          module,
-          query,
-          candidates: candidates.map((candidate) => ({
-            key: candidate.key,
-            label: candidate.label,
-            aliases: candidate.aliases,
-            excerpt: candidate.excerpt,
-          })),
-        }),
-      },
-    ]);
+    const response = await streamAIText(
+      [
+        { role: "system", content: QUIZ_TARGET_RESOLUTION_SYSTEM_PROMPT },
+        {
+          role: "user",
+          content: buildQuizTargetResolutionPrompt({
+            lessonId,
+            module,
+            query,
+            candidates: candidates.map((candidate) => ({
+              key: candidate.key,
+              label: candidate.label,
+              aliases: candidate.aliases,
+              excerpt: candidate.excerpt,
+            })),
+          }),
+        },
+      ],
+      { jsonMode: true },
+    );
 
     const parsed = parseResolvedTargetsPayload(
       extractJsonValue(response),
@@ -677,34 +695,37 @@ export async function generateModuleQuiz<M extends Module>({
     );
   }
 
-  const response = await streamAIText([
-    { role: "system", content: QUIZ_GENERATION_SYSTEM_PROMPT },
-    {
-      role: "user",
-      content: buildStructuredQuizPrompt({
-        lessonId,
-        module,
-        questionType,
-        sourceType,
-        count,
-        manualTargets: validResolvedTargets.map((target) => ({
-          key: target.key,
-          label: target.label,
-          excerpt: target.excerpt,
-        })),
-        weakTargets: weakTargets.map((target) => ({
-          key: target.key,
-          label: target.label,
-          excerpt: target.excerpt,
-        })),
-        candidatePool: allTargets.map((target) => ({
-          key: target.key,
-          label: target.label,
-          excerpt: target.excerpt,
-        })),
-      }),
-    },
-  ]);
+  const response = await streamAIText(
+    [
+      { role: "system", content: QUIZ_GENERATION_SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: buildStructuredQuizPrompt({
+          lessonId,
+          module,
+          questionType,
+          sourceType,
+          count,
+          manualTargets: validResolvedTargets.map((target) => ({
+            key: target.key,
+            label: target.label,
+            excerpt: target.excerpt,
+          })),
+          weakTargets: weakTargets.map((target) => ({
+            key: target.key,
+            label: target.label,
+            excerpt: target.excerpt,
+          })),
+          candidatePool: allTargets.map((target) => ({
+            key: target.key,
+            label: target.label,
+            excerpt: target.excerpt,
+          })),
+        }),
+      },
+    ],
+    { jsonMode: true },
+  );
 
   const fallbackTargets =
     sourceType === "manual_targets"

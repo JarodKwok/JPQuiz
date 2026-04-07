@@ -59,10 +59,13 @@ export async function getModuleContent<M extends Module>({
     }
   }
 
-  const rawText = await streamAIText([
-    { role: "system", content: MODULE_CONTENT_SYSTEM_PROMPT },
-    { role: "user", content: buildModuleContentPrompt(lessonId, module) },
-  ]);
+  const rawText = await streamAIText(
+    [
+      { role: "system", content: MODULE_CONTENT_SYSTEM_PROMPT },
+      { role: "user", content: buildModuleContentPrompt(lessonId, module) },
+    ],
+    { jsonMode: true },
+  );
 
   const parsed = parseModuleContent(module, rawText);
   const serialized = JSON.stringify(parsed);

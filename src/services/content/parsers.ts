@@ -38,11 +38,19 @@ function extractJsonValue(text: string): unknown {
     try {
       return JSON.parse(candidate);
     } catch {
-      // continue
+      // Try trimming trailing non-JSON text
+      const closingChar = candidate[0] === "[" ? "]" : "}";
+      const lastClose = candidate.lastIndexOf(closingChar);
+      if (lastClose > 0) {
+        return JSON.parse(candidate.slice(0, lastClose + 1));
+      }
     }
   }
 
-  throw new Error("AI 返回内容不是有效 JSON。");
+  const preview = trimmed.length > 120 ? trimmed.slice(0, 120) + "…" : trimmed;
+  throw new Error(
+    `AI 返回内容不是有效 JSON。${preview ? `\n返回内容：${preview}` : "（空响应）"}`
+  );
 }
 
 function isVocabularyItem(value: unknown): value is VocabularyItem {

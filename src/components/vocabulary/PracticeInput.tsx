@@ -11,11 +11,12 @@ interface PracticeInputProps {
   onAutoCheck: (correct: boolean) => void;
 }
 
-/** Normalize text for comparison: NFKC, trim, remove punctuation/spaces */
+/** Normalize text for comparison: NFKC, trim, remove brackets/punctuation/spaces */
 function normalize(s: string): string {
   return s
     .normalize("NFKC")
     .trim()
+    .replace(/\[([^\]]*)\]/g, "$1")
     .replace(/[\s　。．.、，,：:～〜\-ー－]/g, "")
     .toLowerCase();
 }

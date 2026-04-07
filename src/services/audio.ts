@@ -54,7 +54,7 @@ async function sha256Hash(text: string): Promise<string> {
 function sanitizeReading(reading: string): string {
   let name = reading;
   name = name.replace(/〜/g, "").replace(/～/g, "");
-  name = name.replace(/\[[^\]]*\]/g, "");
+  name = name.replace(/\[([^\]]*)\]/g, "$1");
   name = name.replace(/（[^）]*）/g, "");
   name = name.replace(/\([^)]*\)/g, "");
   name = name.replace(/[ \u3000]/g, "_");

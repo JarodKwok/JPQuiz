@@ -58,7 +58,7 @@ def clean_reading(raw: str) -> str:
 def sanitize_for_filename(reading: str) -> str:
     name = reading
     name = name.replace('〜', '').replace('～', '')
-    name = re.sub(r'\[[^\]]*\]', '', name)
+    name = re.sub(r'\[([^\]]*)\]', r'\1', name)
     name = re.sub(r'（[^）]*）', '', name)
     name = re.sub(r'\([^)]*\)', '', name)
     name = name.replace(' ', '_').replace('　', '_')
@@ -68,7 +68,7 @@ def sanitize_for_filename(reading: str) -> str:
 
 def speak_text_for(reading: str) -> str:
     text = reading.replace('〜', '').replace('～', '')
-    text = re.sub(r'\[[^\]]*\]', '', text)
+    text = re.sub(r'\[([^\]]*)\]', r'\1', text)
     text = re.sub(r'（[^）]*）', '', text)
     return text.strip() or reading
 

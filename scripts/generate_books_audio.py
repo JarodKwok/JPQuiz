@@ -56,7 +56,7 @@ def sanitize_for_filename(reading: str) -> str:
     # 去掉 〜 前缀（接尾词标记）
     name = name.replace('〜', '').replace('～', '')
     # 去掉方括号
-    name = re.sub(r'\[[^\]]*\]', '', name)
+    name = re.sub(r'\[([^\]]*)\]', r'\1', name)
     # 去掉圆括号及内容
     name = re.sub(r'（[^）]*）', '', name)
     name = re.sub(r'\([^)]*\)', '', name)
@@ -70,7 +70,7 @@ def sanitize_for_filename(reading: str) -> str:
 def speak_text_for(reading: str) -> str:
     """生成朗读用文本（去掉 〜 等语法标记）"""
     text = reading.replace('〜', '').replace('～', '')
-    text = re.sub(r'\[[^\]]*\]', '', text)
+    text = re.sub(r'\[([^\]]*)\]', r'\1', text)
     text = re.sub(r'（[^）]*）', '', text)
     text = text.strip()
     return text or reading

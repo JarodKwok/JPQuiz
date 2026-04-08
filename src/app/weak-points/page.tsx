@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { BookOpen, Languages, Trash2, RefreshCw } from "lucide-react";
 import { getWeakItems, updateMasteryById, deleteMasteryById } from "@/services/mastery";
+import { subscribeDataUpdated } from "@/services/events";
+import { useLessonStore } from "@/stores/lessonStore";
 import MasteryButtons from "@/components/lesson/MasteryButtons";
 import type { MasteryStatus, MasteryLevel, Module } from "@/types";
 
@@ -14,20 +16,22 @@ const MODULE_LABELS: Record<Module, { label: string; icon: typeof BookOpen }> = 
 };
 
 export default function WeakPointsPage() {
+  const { currentLesson } = useLessonStore();
   const [items, setItems] = useState<MasteryStatus[]>([]);
   const [loading, setLoading] = useState(true);
 
   const loadItems = useCallback(async () => {
     setLoading(true);
-    const data = await getWeakItems();
+    const data = await getWeakItems(currentLesson);
     setItems(data);
     setLoading(false);
-  }, []);
+  }, [currentLesson]);
 
   useEffect(() => {
     queueMicrotask(() => {
       void loadItems();
     });
+    return subscribeDataUpdated(() => void loadItems());
   }, [loadItems]);
 
   const handleMastery = async (item: MasteryStatus, level: MasteryLevel) => {
@@ -59,7 +63,7 @@ export default function WeakPointsPage() {
             </span>
           </h1>
           <p className="text-xs text-text-muted mt-1">
-            收录标记为「模糊」或「不会」的知识点 · {items.length} 项
+            第 {currentLesson} 課 · 收录标记为「模糊」或「不会」的知识点 · {items.length} 项
           </p>
         </div>
         <button

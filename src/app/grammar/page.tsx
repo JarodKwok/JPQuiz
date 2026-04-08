@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { ChevronDown, ChevronRight, Loader2, RefreshCw, Hash } from "lucide-react";
 import MasteryButtons from "@/components/lesson/MasteryButtons";
 import ModuleQuizPanel from "@/components/quiz/ModuleQuizPanel";
@@ -10,6 +10,8 @@ import { useStudySession } from "@/hooks/useStudySession";
 import { getModuleContent } from "@/services/content";
 import { getMasteryMap, saveMastery } from "@/services/mastery";
 import { syncLearningProgress } from "@/services/progress";
+import { subscribeDataUpdated } from "@/services/events";
+import { useModuleUIStore } from "@/stores/moduleUIStore";
 import type { MasteryLevel } from "@/types";
 import type { GrammarItem } from "@/types/content";
 import { cn } from "@/lib/utils";
@@ -22,13 +24,46 @@ export default function GrammarPage() {
   const { currentLesson } = useModulePage("grammar");
   useStudySession("grammar", currentLesson);
 
+  const { getViewState, setViewState } = useModuleUIStore();
+  const savedView = getViewState(currentLesson, "grammar");
+
   const [points, setPoints] = useState<GrammarViewItem[]>([]);
-  const [mode, setMode] = useState<"study" | "quiz">("study");
+  const [mode, setMode] = useState<"study" | "quiz">(savedView.mode);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [showNumbers, setShowNumbers] = useState(true);
+  const [showNumbers, setShowNumbers] = useState(savedView.showNumbers);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [source, setSource] = useState<"builtin" | "cache" | "ai" | null>(null);
+
+  // 同步 UI 状态到 store
+  useEffect(() => {
+    setViewState(currentLesson, "grammar", { mode, showNumbers });
+  }, [mode, showNumbers, currentLesson, setViewState]);
+
+  // 课次切换时从 store 恢复该课次的 UI 状态
+  const prevLessonRef = useRef(currentLesson);
+  useEffect(() => {
+    if (prevLessonRef.current === currentLesson) return;
+    prevLessonRef.current = currentLesson;
+    const next = getViewState(currentLesson, "grammar");
+    setMode(next.mode);
+    setShowNumbers(next.showNumbers);
+  }, [currentLesson, getViewState]);
+
+  // 监听数据变更（测验提交后刷新掌握度）
+  useEffect(() => {
+    const refreshMastery = async () => {
+      if (points.length === 0) return;
+      const masteryMap = await getMasteryMap(currentLesson, "grammar");
+      setPoints((prev) =>
+        prev.map((point) => ({
+          ...point,
+          mastery: masteryMap[point.id] as MasteryLevel | undefined,
+        }))
+      );
+    };
+    return subscribeDataUpdated(() => void refreshMastery());
+  }, [currentLesson, points.length]);
 
   const loadPoints = useCallback(
     async (forceRefresh = false) => {

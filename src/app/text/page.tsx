@@ -11,6 +11,8 @@ import { getModuleContent } from "@/services/content";
 import { getMasteryMap, saveMastery } from "@/services/mastery";
 import { syncLearningProgress } from "@/services/progress";
 import { speakText, speakTextAll, stop } from "@/services/audio";
+import { subscribeDataUpdated } from "@/services/events";
+import { useModuleUIStore } from "@/stores/moduleUIStore";
 import type { MasteryLevel } from "@/types";
 import type { TextContent } from "@/types/content";
 
@@ -18,13 +20,40 @@ export default function TextPage() {
   const { currentLesson } = useModulePage("text");
   useStudySession("text", currentLesson);
 
+  const { getViewState, setViewState } = useModuleUIStore();
+  const savedView = getViewState(currentLesson, "text");
+
   const [textData, setTextData] = useState<TextContent | null>(null);
-  const [mode, setMode] = useState<"study" | "quiz">("study");
+  const [mode, setMode] = useState<"study" | "quiz">(savedView.mode);
   const [showTranslation, setShowTranslation] = useState(true);
   const [mastery, setMastery] = useState<MasteryLevel | undefined>();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [source, setSource] = useState<"builtin" | "cache" | "ai" | null>(null);
+
+  // 同步 UI 状态到 store
+  useEffect(() => {
+    setViewState(currentLesson, "text", { mode });
+  }, [mode, currentLesson, setViewState]);
+
+  // 课次切换时从 store 恢复该课次的 UI 状态
+  const prevLessonRef = useRef(currentLesson);
+  useEffect(() => {
+    if (prevLessonRef.current === currentLesson) return;
+    prevLessonRef.current = currentLesson;
+    const next = getViewState(currentLesson, "text");
+    setMode(next.mode);
+  }, [currentLesson, getViewState]);
+
+  // 监听数据变更（测验提交后刷新掌握度）
+  useEffect(() => {
+    const masteryItemKey = `text:${currentLesson}`;
+    const refreshMastery = async () => {
+      const masteryMap = await getMasteryMap(currentLesson, "text");
+      setMastery(masteryMap[masteryItemKey] as MasteryLevel | undefined);
+    };
+    return subscribeDataUpdated(() => void refreshMastery());
+  }, [currentLesson]);
 
   // 朗读全文状态
   const [isReadingAll, setIsReadingAll] = useState(false);

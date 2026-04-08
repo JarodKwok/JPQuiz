@@ -20,7 +20,9 @@
     "app:dev:status": "JPQUIZ_SERVICE_MODE=dev bash scripts/service.sh status",
     "app:dev:logs": "JPQUIZ_SERVICE_MODE=dev bash scripts/service.sh logs",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "generate:questions": "tsx scripts/generate-question-bank.ts",
+    "build:questions": "tsx scripts/build-question-bank.ts"
   },
   "devDependencies": {
     "vitest": "^3.2.4"

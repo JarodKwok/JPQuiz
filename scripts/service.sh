@@ -143,32 +143,29 @@ stop_service() {
   fi
 
   echo "==> 停止$(service_label) (PID: $pid)"
-  if ! kill "$pid" 2>/dev/null; then
-    echo "==> 无法停止 PID $pid，请手动处理。"
-    return 1
-  fi
 
-  for _ in {1..20}; do
+  # 杀进程组（主进程 + 所有子进程），避免子进程残留导致关闭缓慢
+  kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+
+  for _ in {1..10}; do
     if ! is_running_pid "$pid"; then
       rm -f "$PID_FILE"
       echo "==> 已停止"
       return 0
     fi
-    sleep 0.5
+    sleep 0.3
   done
 
-  echo "==> 仍未退出，尝试强制停止"
-  if ! kill -9 "$pid" 2>/dev/null; then
-    echo "==> 强制停止失败，请手动处理。"
-    return 1
+  echo "==> 仍未退出，强制停止"
+  kill -9 -- -"$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null || true
+  # 清理端口上残留的子进程
+  local port_pids
+  port_pids="$(lsof -ti "tcp:${PORT}" 2>/dev/null || true)"
+  if [[ -n "$port_pids" ]]; then
+    echo "$port_pids" | xargs kill -9 2>/dev/null || true
   fi
 
-  sleep 1
-  if is_running_pid "$pid"; then
-    echo "==> 进程仍在运行，请手动处理。"
-    return 1
-  fi
-
+  sleep 0.5
   rm -f "$PID_FILE"
   echo "==> 已强制停止"
 }
@@ -217,7 +214,7 @@ stop_all_managed_services() {
 
     if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
       echo "==> 停止 $name (PID: $pid)"
-      kill "$pid" 2>/dev/null || true
+      kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
     fi
 
     rm -f "$file"

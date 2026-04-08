@@ -7,6 +7,7 @@ import type { Module } from "@/types";
 import type { ModuleContent } from "@/types/content";
 import type {
   QuizData,
+  QuizDraftAnswer,
   QuizQuestionType,
   QuizResolvedTarget,
   QuizSourceType,
@@ -18,6 +19,7 @@ import {
   persistQuizSubmission,
   resolveQuizTargets,
 } from "@/services/quiz";
+import { useModuleUIStore } from "@/stores/moduleUIStore";
 import StructuredQuiz from "./StructuredQuiz";
 
 interface ModuleQuizPanelProps<M extends Module> {
@@ -66,11 +68,15 @@ export default function ModuleQuizPanel<M extends Module>({
   contentLoading,
   contentError,
 }: ModuleQuizPanelProps<M>) {
+  // 从 store 恢复测验状态（模块切换后保留）
+  const { getQuizState, setQuizState } = useModuleUIStore();
+  const savedQuiz = getQuizState(lessonId, module);
+
   const [questionType, setQuestionType] =
-    useState<QuizQuestionType>("multiple_choice");
+    useState<QuizQuestionType>(savedQuiz.questionType);
   const [sourceType, setSourceType] =
-    useState<QuizSourceType>("random_scope");
-  const [count, setCount] = useState(5);
+    useState<QuizSourceType>(savedQuiz.sourceType);
+  const [count, setCount] = useState(savedQuiz.count);
   const [targetInput, setTargetInput] = useState("");
   const [resolvedTargets, setResolvedTargets] = useState<QuizResolvedTarget[]>([]);
   const [allTargetCount, setAllTargetCount] = useState(0);
@@ -79,9 +85,18 @@ export default function ModuleQuizPanel<M extends Module>({
   const [resolvingTargets, setResolvingTargets] = useState(false);
   const [generatingQuiz, setGeneratingQuiz] = useState(false);
   const [savingResult, setSavingResult] = useState(false);
-  const [quiz, setQuiz] = useState<QuizData | null>(null);
+  const [quiz, setQuiz] = useState<QuizData | null>(savedQuiz.quiz);
+  const [answers, setAnswers] = useState<Record<number, QuizDraftAnswer>>(savedQuiz.answers);
+  const [submission, setSubmission] = useState<QuizSubmission | null>(savedQuiz.submission);
   const [feedback, setFeedback] = useState("");
   const [error, setError] = useState("");
+
+  // 同步测验状态到 store
+  useEffect(() => {
+    setQuizState(lessonId, module, {
+      questionType, sourceType, count, quiz, answers, submission,
+    });
+  }, [questionType, sourceType, count, quiz, answers, submission, lessonId, module, setQuizState]);
 
   const supportsTargetInput =
     sourceType === "manual_targets" || sourceType === "mixed";
@@ -194,6 +209,8 @@ export default function ModuleQuizPanel<M extends Module>({
       });
 
       setQuiz(generatedQuiz);
+      setAnswers({});
+      setSubmission(null);
       setFeedback("题目已生成，直接开始答题吧。");
     } catch (err) {
       setError(err instanceof Error ? err.message : "测验生成失败。");
@@ -202,9 +219,10 @@ export default function ModuleQuizPanel<M extends Module>({
     }
   };
 
-  const handleSubmitQuiz = async (submission: QuizSubmission) => {
+  const handleSubmitQuiz = async (newSubmission: QuizSubmission) => {
     if (!content || !quiz) return;
 
+    setSubmission(newSubmission);
     setSavingResult(true);
     setError("");
     try {
@@ -213,10 +231,10 @@ export default function ModuleQuizPanel<M extends Module>({
         module,
         data: content,
         quiz,
-        submission,
+        submission: newSubmission,
       });
       setFeedback(
-        `本次测验已保存：${submission.correctCount}/${submission.totalQuestions} 正确，正确率 ${submission.accuracy}%。`
+        `本次测验已保存：${newSubmission.correctCount}/${newSubmission.totalQuestions} 正确，正确率 ${newSubmission.accuracy}%。`
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "测验结果保存失败。");
@@ -446,6 +464,9 @@ export default function ModuleQuizPanel<M extends Module>({
           <StructuredQuiz
             key={`${module}-${lessonId}-${quiz.title}-${quiz.count}-${quiz.questionType}`}
             quiz={quiz}
+            answers={answers}
+            onAnswersChange={setAnswers}
+            submission={submission}
             onComplete={handleSubmitQuiz}
           />
         </div>

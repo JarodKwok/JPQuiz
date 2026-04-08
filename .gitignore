@@ -24,6 +24,9 @@
 /books/
 TODO.md
 
+# generated question bank seed (rebuild with: npm run build:questions)
+/public/data/question-bank.json
+
 # generated audio files (too large for git)
 # vocab audio: regenerate with scripts/generate_books_audio.py
 /books/audio/

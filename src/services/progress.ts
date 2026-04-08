@@ -130,15 +130,41 @@ export async function getLessonProgressSummary(lessonId: number) {
   return summary;
 }
 
-export async function getHistoryStats(): Promise<HistoryStats> {
-  const [progressList, masteryList, sessions, wrongAnswersCount, quizSessions] =
+export async function getHistoryStats(filterLessonId?: number): Promise<HistoryStats> {
+  const [allProgress, allMastery, allSessions, allWrongAnswers, allQuizSessions] =
     await Promise.all([
     db.learningProgress.toArray(),
     db.masteryStatus.toArray(),
     db.studySessions.toArray(),
-    db.wrongAnswers.count(),
+    db.wrongAnswers.toArray(),
     db.quizSessions.toArray(),
   ]);
+
+  // 按课次筛选
+  const progressList = filterLessonId !== undefined
+    ? allProgress.filter((p) => p.lessonId === filterLessonId)
+    : allProgress;
+  const masteryList = filterLessonId !== undefined
+    ? allMastery.filter((m) => m.lessonId === filterLessonId)
+    : allMastery;
+  const sessions = filterLessonId !== undefined
+    ? allSessions.filter((s) => s.lessonId === filterLessonId)
+    : allSessions;
+  const wrongAnswersCount = filterLessonId !== undefined
+    ? allWrongAnswers.filter((w) => w.lessonId === filterLessonId).length
+    : allWrongAnswers.length;
+  const quizSessions = filterLessonId !== undefined
+    ? allQuizSessions.filter((q) => q.lessonId === filterLessonId)
+    : allQuizSessions;
+
+  console.log("[getHistoryStats]", {
+    filterLessonId,
+    progress: progressList.length,
+    mastery: masteryList.length,
+    sessions: sessions.length,
+    wrongAnswers: wrongAnswersCount,
+    quizSessions: quizSessions.length,
+  });
 
   const studiedLessonSet = new Set<number>();
   for (const progress of progressList) {
@@ -168,14 +194,17 @@ export async function getHistoryStats(): Promise<HistoryStats> {
   } satisfies Record<Module, { total: number; count: number }>;
 
   for (const mastery of masteryList) {
-    if (mastery.status === "mastered") {
+    if (mastery.status === "mastered" && moduleMasteryCounts[mastery.module] !== undefined) {
       moduleMasteryCounts[mastery.module] += 1;
     }
   }
 
   for (const progress of progressList) {
-    moduleProgressTotals[progress.module].total += progress.masteryPercent;
-    moduleProgressTotals[progress.module].count += 1;
+    const bucket = moduleProgressTotals[progress.module];
+    if (bucket) {
+      bucket.total += progress.masteryPercent;
+      bucket.count += 1;
+    }
   }
 
   const moduleProgress = MODULES.reduce(
@@ -205,8 +234,11 @@ export async function getHistoryStats(): Promise<HistoryStats> {
   } satisfies Record<QuizQuestionType, { correct: number; total: number }>;
 
   for (const session of quizSessions) {
-    quizAccuracyTotals[session.questionType].correct += session.correctCount;
-    quizAccuracyTotals[session.questionType].total += session.totalQuestions;
+    const bucket = quizAccuracyTotals[session.questionType];
+    if (bucket) {
+      bucket.correct += session.correctCount;
+      bucket.total += session.totalQuestions;
+    }
   }
 
   const quizAccuracyByType = {

@@ -13,6 +13,11 @@ import { gradeQuizSubmission } from "@/services/quiz";
 
 interface StructuredQuizProps {
   quiz: QuizData;
+  /** 外部受控的答案状态（可选，缺省时内部管理） */
+  answers?: Record<number, QuizDraftAnswer>;
+  onAnswersChange?: (answers: Record<number, QuizDraftAnswer>) => void;
+  /** 外部受控的提交结果（可选，缺省时内部管理） */
+  submission?: QuizSubmission | null;
   onComplete?: (submission: QuizSubmission) => void | Promise<void>;
 }
 
@@ -32,11 +37,27 @@ function isAnswered(question: QuizQuestion, value: QuizDraftAnswer) {
 
 export default function StructuredQuiz({
   quiz,
+  answers: externalAnswers,
+  onAnswersChange,
+  submission: externalSubmission,
   onComplete,
 }: StructuredQuizProps) {
-  const [answers, setAnswers] = useState<Record<number, QuizDraftAnswer>>({});
-  const [submitted, setSubmitted] = useState(false);
-  const [submission, setSubmission] = useState<QuizSubmission | null>(null);
+  const [internalAnswers, setInternalAnswers] = useState<Record<number, QuizDraftAnswer>>({});
+  const [internalSubmission, setInternalSubmission] = useState<QuizSubmission | null>(null);
+
+  // 受控/非受控模式
+  const answers = externalAnswers ?? internalAnswers;
+  const submission = externalSubmission !== undefined ? externalSubmission : internalSubmission;
+  const submitted = submission !== null;
+
+  const updateAnswer = (questionId: number, value: QuizDraftAnswer) => {
+    const next = { ...answers, [questionId]: value };
+    if (onAnswersChange) {
+      onAnswersChange(next);
+    } else {
+      setInternalAnswers(next);
+    }
+  };
 
   const answeredCount = useMemo(
     () =>
@@ -50,8 +71,7 @@ export default function StructuredQuiz({
 
   const handleSubmit = () => {
     const nextSubmission = gradeQuizSubmission(quiz, answers);
-    setSubmission(nextSubmission);
-    setSubmitted(true);
+    setInternalSubmission(nextSubmission);
     void onComplete?.(nextSubmission);
   };
 
@@ -123,12 +143,7 @@ export default function StructuredQuiz({
                   return (
                     <button
                       key={`${question.id}-${optionIndex}`}
-                      onClick={() =>
-                        setAnswers((prev) => ({
-                          ...prev,
-                          [question.id]: optionIndex,
-                        }))
-                      }
+                      onClick={() => updateAnswer(question.id, optionIndex)}
                       disabled={submitted}
                       className={cn(
                         "flex items-center gap-3 w-full text-left px-4 py-2.5 rounded-lg border text-sm transition-all",
@@ -162,12 +177,7 @@ export default function StructuredQuiz({
               <input
                 type="text"
                 value={typeof answer === "string" ? answer : ""}
-                onChange={(event) =>
-                  setAnswers((prev) => ({
-                    ...prev,
-                    [question.id]: event.target.value,
-                  }))
-                }
+                onChange={(event) => updateAnswer(question.id, event.target.value)}
                 disabled={submitted}
                 placeholder={question.placeholder || "请输入答案"}
                 className="w-full bg-bg-card border border-border rounded-lg px-3 py-2 text-sm text-text
@@ -179,12 +189,7 @@ export default function StructuredQuiz({
             {question.type === "translation" && (
               <textarea
                 value={typeof answer === "string" ? answer : ""}
-                onChange={(event) =>
-                  setAnswers((prev) => ({
-                    ...prev,
-                    [question.id]: event.target.value,
-                  }))
-                }
+                onChange={(event) => updateAnswer(question.id, event.target.value)}
                 disabled={submitted}
                 placeholder={question.placeholder || "请输入翻译结果"}
                 rows={3}

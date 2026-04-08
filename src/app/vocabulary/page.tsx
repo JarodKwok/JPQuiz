@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Volume2, RefreshCw, Loader2, Eye, EyeOff, Hash, Languages, BookOpen } from "lucide-react";
 import MasteryButtons from "@/components/lesson/MasteryButtons";
 import ModuleQuizPanel from "@/components/quiz/ModuleQuizPanel";
@@ -13,6 +13,8 @@ import { getModuleContent } from "@/services/content";
 import { getMasteryMap, saveMastery } from "@/services/mastery";
 import { syncLearningProgress } from "@/services/progress";
 import { speakVocab, playVictory } from "@/services/audio";
+import { subscribeDataUpdated } from "@/services/events";
+import { useModuleUIStore } from "@/stores/moduleUIStore";
 import type { MasteryLevel } from "@/types";
 import type { VocabularyItem } from "@/types/content";
 
@@ -29,19 +31,46 @@ export default function VocabularyPage() {
   const { currentLesson } = useModulePage("vocabulary");
   useStudySession("vocabulary", currentLesson);
 
+  // 从 store 恢复 UI 状态（模块切换后保留）
+  const { getViewState, setViewState } = useModuleUIStore();
+  const savedView = getViewState(currentLesson, "vocabulary");
+
   const [words, setWords] = useState<VocabularyViewItem[]>([]);
-  const [mode, setMode] = useState<"study" | "quiz">("study");
-  const [showNumbers, setShowNumbers] = useState(true);
-  const [showJapaneseGlobal, setShowJapaneseGlobal] = useState(true);
-  const [showMeaningGlobal, setShowMeaningGlobal] = useState(true);
-  const [showKanjiGlobal, setShowKanjiGlobal] = useState(false);
-  const [filter, setFilter] = useState<FilterMode>("all");
-  const [tagFilter, setTagFilter] = useState<string | null>(null);
+  const [mode, setMode] = useState<"study" | "quiz">(savedView.mode);
+  const [showNumbers, setShowNumbers] = useState(savedView.showNumbers);
+  const [showJapaneseGlobal, setShowJapaneseGlobal] = useState(savedView.showJapaneseGlobal);
+  const [showMeaningGlobal, setShowMeaningGlobal] = useState(savedView.showMeaningGlobal);
+  const [showKanjiGlobal, setShowKanjiGlobal] = useState(savedView.showKanjiGlobal);
+  const [filter, setFilter] = useState<FilterMode>(savedView.filter);
+  const [tagFilter, setTagFilter] = useState<string | null>(savedView.tagFilter);
   // 快照：记录进入筛选时符合条件的词索引，防止标记"会了"后立即消失
   const [snapshotIndices, setSnapshotIndices] = useState<Set<number> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [source, setSource] = useState<"builtin" | "cache" | "ai" | null>(null);
+
+  // 同步 UI 状态到 store（模块切换后可恢复）
+  useEffect(() => {
+    setViewState(currentLesson, "vocabulary", {
+      mode, filter, tagFilter, showNumbers,
+      showJapaneseGlobal, showMeaningGlobal, showKanjiGlobal,
+    });
+  }, [mode, filter, tagFilter, showNumbers, showJapaneseGlobal, showMeaningGlobal, showKanjiGlobal, currentLesson, setViewState]);
+
+  // 监听数据变更（测验提交后刷新掌握度）
+  useEffect(() => {
+    const refreshMastery = async () => {
+      if (words.length === 0) return;
+      const masteryMap = await getMasteryMap(currentLesson, "vocabulary");
+      setWords((prev) =>
+        prev.map((word) => ({
+          ...word,
+          mastery: masteryMap[word.word] as MasteryLevel | undefined,
+        }))
+      );
+    };
+    return subscribeDataUpdated(() => void refreshMastery());
+  }, [currentLesson, words.length]);
 
   const loadWords = useCallback(
     async (forceRefresh = false) => {
@@ -85,12 +114,21 @@ export default function VocabularyPage() {
     void loadWords();
   }, [loadWords]);
 
-  // 课次切换时重置筛选
+  // 课次切换时从 store 恢复该课次的 UI 状态
+  const prevLessonRef = useRef(currentLesson);
   useEffect(() => {
-    setFilter("all");
-    setTagFilter(null);
+    if (prevLessonRef.current === currentLesson) return;
+    prevLessonRef.current = currentLesson;
+    const next = getViewState(currentLesson, "vocabulary");
+    setMode(next.mode);
+    setFilter(next.filter);
+    setTagFilter(next.tagFilter);
+    setShowNumbers(next.showNumbers);
+    setShowJapaneseGlobal(next.showJapaneseGlobal);
+    setShowMeaningGlobal(next.showMeaningGlobal);
+    setShowKanjiGlobal(next.showKanjiGlobal);
     setSnapshotIndices(null);
-  }, [currentLesson]);
+  }, [currentLesson, getViewState]);
 
   // 当全局日文开关变化时，更新所有单词
   useEffect(() => {

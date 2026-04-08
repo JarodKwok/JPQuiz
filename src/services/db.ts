@@ -10,7 +10,23 @@ import type {
   AIConversationSummary,
   AILongTermMemory,
 } from "@/types";
-import type { QuizSessionRecord } from "@/types/quiz";
+import type { QuizSessionRecord, QuizQuestionType } from "@/types/quiz";
+
+/** 题库条目 */
+export interface QuestionBankItem {
+  id?: number;
+  lessonId: number;
+  module: string;
+  questionType: QuizQuestionType;
+  prompt: string;
+  options?: string[];
+  correctIndex?: number;
+  answer?: string;
+  acceptedAnswers?: string[];
+  direction?: "zh-to-ja" | "ja-to-zh";
+  knowledgeKeys: string[];
+  explanation?: string;
+}
 
 /** AI 生成内容的缓存 */
 export interface ContentCache {
@@ -34,6 +50,7 @@ class JPQuizDB extends Dexie {
   aiMessages!: Table<AIConversationMessage>;
   aiConversationSummaries!: Table<AIConversationSummary>;
   aiLongTermMemories!: Table<AILongTermMemory>;
+  questionBank!: Table<QuestionBankItem>;
 
   constructor() {
     super("jpquiz");
@@ -63,6 +80,19 @@ class JPQuizDB extends Dexie {
       aiMessages: "++id, conversationId, ownerId, role, createdAt",
       aiConversationSummaries: "++id, conversationId, ownerId, updatedAt",
       aiLongTermMemories: "++id, ownerId, kind, score, updatedAt, lastUsedAt",
+    });
+    this.version(6).stores({
+      learningProgress: "++id, lessonId, module, updatedAt",
+      masteryStatus: "++id, lessonId, module, status, [lessonId+module+itemKey]",
+      wrongAnswers: "++id, lessonId, module, status",
+      studySessions: "++id, date, module",
+      contentCache: "++id, [lessonId+module], updatedAt",
+      quizSessions: "++id, lessonId, module, questionType, sourceType, createdAt",
+      aiConversations: "++id, ownerId, updatedAt, lastMessageAt",
+      aiMessages: "++id, conversationId, ownerId, role, createdAt",
+      aiConversationSummaries: "++id, conversationId, ownerId, updatedAt",
+      aiLongTermMemories: "++id, ownerId, kind, score, updatedAt, lastUsedAt",
+      questionBank: "++id, lessonId, module, questionType, [lessonId+module+questionType]",
     });
   }
 }

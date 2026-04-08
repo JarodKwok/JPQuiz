@@ -12,6 +12,7 @@ import {
 import { getHistoryStats, type HistoryStats } from "@/services/progress";
 import { generateProgressInsight } from "@/services/progress-insights";
 import { subscribeDataUpdated } from "@/services/events";
+import { useLessonStore } from "@/stores/lessonStore";
 
 const EMPTY_STATS: HistoryStats = {
   lessonsStudied: 0,
@@ -54,14 +55,15 @@ const SOURCE_LABELS = {
 } as const;
 
 export default function HistoryPage() {
+  const { currentLesson } = useLessonStore();
   const [stats, setStats] = useState<HistoryStats>(EMPTY_STATS);
   const [insight, setInsight] = useState("");
   const [insightLoading, setInsightLoading] = useState(false);
   const [insightError, setInsightError] = useState("");
 
   const loadStats = useCallback(async () => {
-    setStats(await getHistoryStats());
-  }, []);
+    setStats(await getHistoryStats(currentLesson));
+  }, [currentLesson]);
 
   useEffect(() => {
     queueMicrotask(() => {
@@ -97,7 +99,7 @@ export default function HistoryPage() {
             きろく
           </span>
         </h1>
-        <p className="text-xs text-text-muted mt-1">查看学习进度与统计</p>
+        <p className="text-xs text-text-muted mt-1">第 {currentLesson} 課 · 查看学习进度与统计</p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3 mb-6">
@@ -106,10 +108,10 @@ export default function HistoryPage() {
             <BookOpen size={20} className="text-primary" />
           </div>
           <div>
-            <p className="text-2xl font-semibold text-text">
-              {stats.lessonsStudied}
+            <p className="text-2xl font-semibold text-text whitespace-nowrap">
+              第 {currentLesson} 課
             </p>
-            <p className="text-xs text-text-muted">已学课次</p>
+            <p className="text-xs text-text-muted">当前课次</p>
           </div>
         </div>
 
@@ -118,7 +120,7 @@ export default function HistoryPage() {
             <BarChart3 size={20} className="text-mastered" />
           </div>
           <div>
-            <p className="text-2xl font-semibold text-text">
+            <p className="text-2xl font-semibold text-text whitespace-nowrap">
               {stats.masteredItems}
             </p>
             <p className="text-xs text-text-muted">已掌握知识点</p>
@@ -130,10 +132,10 @@ export default function HistoryPage() {
             <Clock size={20} className="text-accent" />
           </div>
           <div>
-            <p className="text-2xl font-semibold text-text">
+            <p className="text-2xl font-semibold text-text whitespace-nowrap">
               {stats.totalStudyMinutes} 分
             </p>
-            <p className="text-xs text-text-muted">总学习时长</p>
+            <p className="text-xs text-text-muted">本课学习时长</p>
           </div>
         </div>
 
@@ -142,7 +144,7 @@ export default function HistoryPage() {
             <TriangleAlert size={20} className="text-weak" />
           </div>
           <div>
-            <p className="text-2xl font-semibold text-text">
+            <p className="text-2xl font-semibold text-text whitespace-nowrap">
               {stats.wrongAnswersCount}
             </p>
             <p className="text-xs text-text-muted">累计错题</p>
@@ -154,7 +156,7 @@ export default function HistoryPage() {
             <Target size={20} className="text-primary" />
           </div>
           <div>
-            <p className="text-2xl font-semibold text-text">
+            <p className="text-2xl font-semibold text-text whitespace-nowrap">
               {stats.totalQuizSessions}
             </p>
             <p className="text-xs text-text-muted">已完成测验</p>

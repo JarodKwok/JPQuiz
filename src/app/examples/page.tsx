@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { RefreshCw, Volume2, Loader2, Hash, Eye, EyeOff, BookOpen } from "lucide-react";
 import MasteryButtons from "@/components/lesson/MasteryButtons";
 import ModuleQuizPanel from "@/components/quiz/ModuleQuizPanel";
@@ -11,6 +11,8 @@ import { getModuleContent } from "@/services/content";
 import { getMasteryMap, saveMastery } from "@/services/mastery";
 import { syncLearningProgress } from "@/services/progress";
 import { speakExample } from "@/services/audio";
+import { subscribeDataUpdated } from "@/services/events";
+import { useModuleUIStore } from "@/stores/moduleUIStore";
 import type { MasteryLevel } from "@/types";
 import type {
   ExampleItem,
@@ -34,10 +36,13 @@ export default function ExamplesPage() {
   const { currentLesson } = useModulePage("examples");
   useStudySession("examples", currentLesson);
 
+  const { getViewState, setViewState } = useModuleUIStore();
+  const savedView = getViewState(currentLesson, "examples");
+
   const [patterns, setPatterns] = useState<PatternViewItem[]>([]);
   const [examples, setExamples] = useState<ExampleViewItem[]>([]);
-  const [mode, setMode] = useState<"study" | "quiz">("study");
-  const [showNumbers, setShowNumbers] = useState(true);
+  const [mode, setMode] = useState<"study" | "quiz">(savedView.mode);
+  const [showNumbers, setShowNumbers] = useState(savedView.showNumbers);
   const [showTranslationGlobal, setShowTranslationGlobal] = useState(true);
   const [showJapaneseGlobal, setShowJapaneseGlobal] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -45,6 +50,42 @@ export default function ExamplesPage() {
   const [source, setSource] = useState<"builtin" | "cache" | "ai" | null>(
     null
   );
+
+  // 同步 UI 状态到 store
+  useEffect(() => {
+    setViewState(currentLesson, "examples", { mode, showNumbers });
+  }, [mode, showNumbers, currentLesson, setViewState]);
+
+  // 课次切换时从 store 恢复该课次的 UI 状态
+  const prevLessonRef = useRef(currentLesson);
+  useEffect(() => {
+    if (prevLessonRef.current === currentLesson) return;
+    prevLessonRef.current = currentLesson;
+    const next = getViewState(currentLesson, "examples");
+    setMode(next.mode);
+    setShowNumbers(next.showNumbers);
+  }, [currentLesson, getViewState]);
+
+  // 监听数据变更（测验提交后刷新掌握度）
+  useEffect(() => {
+    const refreshMastery = async () => {
+      if (patterns.length === 0 && examples.length === 0) return;
+      const masteryMap = await getMasteryMap(currentLesson, "examples");
+      setPatterns((prev) =>
+        prev.map((item) => ({
+          ...item,
+          mastery: masteryMap[item.id] as MasteryLevel | undefined,
+        }))
+      );
+      setExamples((prev) =>
+        prev.map((item) => ({
+          ...item,
+          mastery: masteryMap[item.japanese] as MasteryLevel | undefined,
+        }))
+      );
+    };
+    return subscribeDataUpdated(() => void refreshMastery());
+  }, [currentLesson, patterns.length, examples.length]);
 
   const getPlainContent = useCallback(
     (

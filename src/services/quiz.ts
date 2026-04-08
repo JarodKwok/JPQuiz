@@ -27,6 +27,7 @@ import {
 } from "./prompts";
 import { saveWrongAnswer } from "./wrongAnswers";
 import { getTagLabel } from "@/data/vocabulary-tags";
+import { tryQuestionBank } from "./question-bank";
 
 interface QuizTargetCandidate extends QuizResolvedTarget {
   masteryKey: string;
@@ -695,6 +696,27 @@ export async function generateModuleQuiz<M extends Module>({
     );
   }
 
+  // 优先从题库取题（秒出）
+  const bankResult = await tryQuestionBank({
+    lessonId,
+    module,
+    questionType,
+    sourceType,
+    count,
+    targetKeys: validResolvedTargets.map((t) => t.key),
+    weakKeys: weakTargets.map((t) => t.key),
+  });
+  if (bankResult && bankResult.questions.length >= count) {
+    return {
+      ...bankResult,
+      resolvedTargets: validResolvedTargets.map((t) => ({
+        key: t.key,
+        label: t.label,
+      })),
+    } satisfies QuizData;
+  }
+
+  // 题库不足，回退 AI 生成
   const response = await streamAIText(
     [
       { role: "system", content: QUIZ_GENERATION_SYSTEM_PROMPT },
@@ -884,6 +906,13 @@ export async function persistQuizSubmission<M extends Module>({
   quiz: QuizData;
   submission: QuizSubmission;
 }) {
+  console.log("[persistQuizSubmission] 保存测验结果", {
+    lessonId, module,
+    totalQuestions: submission.totalQuestions,
+    correctCount: submission.correctCount,
+    accuracy: submission.accuracy,
+  });
+
   const candidates = buildQuizTargetCandidates(lessonId, module, data);
   const candidateMap = new Map(candidates.map((candidate) => [candidate.key, candidate]));
   const questionMap = new Map(quiz.questions.map((question) => [question.id, question]));
@@ -922,11 +951,13 @@ export async function persistQuizSubmission<M extends Module>({
     );
 
     for (const masteryKey of masteryKeys) {
-      // 答错才更新掌握度为"不会"；答对不自动改为"会了"，
-      // 掌握度只能由用户在学习页手动标记。
-      if (!result.isCorrect) {
-        await saveMastery(lessonId, module, masteryKey, "weak");
-      }
+      const level = result.isCorrect ? "mastered" : "weak";
+      console.log(`[persistQuizSubmission] ${result.isCorrect ? "✅" : "❌"} ${masteryKey} → ${level}`);
+      await saveMastery(lessonId, module, masteryKey, level);
+    }
+
+    if (masteryKeys.length === 0) {
+      console.warn("[persistQuizSubmission] ⚠ 无法映射 knowledgeKeys →", result.knowledgeKeys);
     }
 
     if (!result.isCorrect) {

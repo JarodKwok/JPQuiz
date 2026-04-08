@@ -51,12 +51,14 @@ export async function getMasteryMap(
   return map;
 }
 
-/** Get all weak/fuzzy items across all lessons */
-export async function getWeakItems(): Promise<MasteryStatus[]> {
-  return db.masteryStatus
+/** Get weak/fuzzy items, optionally filtered by lesson */
+export async function getWeakItems(lessonId?: number): Promise<MasteryStatus[]> {
+  const all = await db.masteryStatus
     .where("status")
     .anyOf(["weak", "fuzzy"])
     .toArray();
+  if (lessonId === undefined) return all;
+  return all.filter((item) => item.lessonId === lessonId);
 }
 
 /** Update a mastery item status (e.g. mark as mastered from weak-points page) */

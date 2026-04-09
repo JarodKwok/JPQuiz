@@ -705,6 +705,7 @@ export async function generateModuleQuiz<M extends Module>({
     count,
     targetKeys: validResolvedTargets.map((t) => t.key),
     weakKeys: weakTargets.map((t) => t.key),
+    scopeKeys: allTargets.map((t) => t.key),
   });
   if (bankResult && bankResult.questions.length >= count) {
     return {
@@ -951,9 +952,10 @@ export async function persistQuizSubmission<M extends Module>({
     );
 
     for (const masteryKey of masteryKeys) {
-      const level = result.isCorrect ? "mastered" : "weak";
-      console.log(`[persistQuizSubmission] ${result.isCorrect ? "✅" : "❌"} ${masteryKey} → ${level}`);
-      await saveMastery(lessonId, module, masteryKey, level);
+      // 答错→标记为不会；答对不改变掌握度（掌握度只能通过手动标记提升）
+      if (!result.isCorrect) {
+        await saveMastery(lessonId, module, masteryKey, "weak");
+      }
     }
 
     if (masteryKeys.length === 0) {

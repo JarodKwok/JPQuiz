@@ -131,41 +131,50 @@ stop_service() {
 
   local pid
   pid="$(read_pid || true)"
-  if [[ -z "$pid" ]]; then
+  if [[ -z "$pid" ]] && ! is_port_listening; then
     echo "==> 当前没有受管的$(service_label)"
     return 0
   fi
 
-  if ! is_running_pid "$pid"; then
+  if [[ -n "$pid" ]] && ! is_running_pid "$pid" && ! is_port_listening; then
     rm -f "$PID_FILE"
     echo "==> $(service_label)已停止"
     return 0
   fi
 
-  echo "==> 停止$(service_label) (PID: $pid)"
+  echo "==> 停止$(service_label) (PID: ${pid:-?}, 端口: $PORT)"
 
-  # 杀进程组（主进程 + 所有子进程），避免子进程残留导致关闭缓慢
-  kill -- -"$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+  # 1) 先查端口上所有进程，一次性全杀
+  local port_pids
+  port_pids="$(lsof -ti "tcp:${PORT}" 2>/dev/null || true)"
+  if [[ -n "$port_pids" ]]; then
+    echo "$port_pids" | xargs kill 2>/dev/null || true
+  fi
+  # 同时杀 PID 文件记录的进程
+  if [[ -n "$pid" ]] && is_running_pid "$pid"; then
+    kill "$pid" 2>/dev/null || true
+  fi
 
-  for _ in {1..10}; do
-    if ! is_running_pid "$pid"; then
+  # 2) 短暂等待优雅退出
+  for _ in {1..5}; do
+    if ! is_port_listening && { [[ -z "$pid" ]] || ! is_running_pid "$pid"; }; then
       rm -f "$PID_FILE"
       echo "==> 已停止"
       return 0
     fi
-    sleep 0.3
+    sleep 0.2
   done
 
-  echo "==> 仍未退出，强制停止"
-  kill -9 -- -"$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null || true
-  # 清理端口上残留的子进程
-  local port_pids
+  # 3) 强杀
   port_pids="$(lsof -ti "tcp:${PORT}" 2>/dev/null || true)"
   if [[ -n "$port_pids" ]]; then
     echo "$port_pids" | xargs kill -9 2>/dev/null || true
   fi
+  if [[ -n "$pid" ]] && is_running_pid "$pid"; then
+    kill -9 "$pid" 2>/dev/null || true
+  fi
 
-  sleep 0.5
+  sleep 0.3
   rm -f "$PID_FILE"
   echo "==> 已强制停止"
 }

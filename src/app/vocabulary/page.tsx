@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Volume2, RefreshCw, Loader2, Eye, EyeOff, Hash, Languages, BookOpen } from "lucide-react";
+import { Volume2, RefreshCw, Loader2, Eye, EyeOff, Hash, Languages, BookOpen, Repeat, Square } from "lucide-react";
 import MasteryButtons from "@/components/lesson/MasteryButtons";
 import ModuleQuizPanel from "@/components/quiz/ModuleQuizPanel";
 import ModuleModeTabs from "@/components/quiz/ModuleModeTabs";
@@ -12,7 +12,7 @@ import { useStudySession } from "@/hooks/useStudySession";
 import { getModuleContent } from "@/services/content";
 import { getMasteryMap, saveMastery } from "@/services/mastery";
 import { syncLearningProgress } from "@/services/progress";
-import { speakVocab, playVictory } from "@/services/audio";
+import { speakVocab, speakVocabAsync, stop as stopAudio, playVictory } from "@/services/audio";
 import { subscribeDataUpdated } from "@/services/events";
 import { useModuleUIStore } from "@/stores/moduleUIStore";
 import type { MasteryLevel } from "@/types";
@@ -48,6 +48,12 @@ export default function VocabularyPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [source, setSource] = useState<"builtin" | "cache" | "ai" | null>(null);
+
+  // 三遍循环播放
+  const [loopPlaying, setLoopPlaying] = useState(false);
+  const [loopCurrentIndex, setLoopCurrentIndex] = useState(-1);
+  const loopAbortRef = useRef(false);
+  const cardRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   // 同步 UI 状态到 store（模块切换后可恢复）
   useEffect(() => {
@@ -205,12 +211,24 @@ export default function VocabularyPage() {
     void speakVocab(text, currentLesson, reading);
   };
 
-  // 筛选条件变化时，拍摄快照（锁定当前符合条件的词索引）
+  // 筛选条件变化时拍快照（锁定当前符合条件的词索引，防止标记后消失）
+  // 同时：如果快照为空但词汇已加载（模块切换回来的场景），重新拍摄
+  const prevFilterRef = useRef<{ filter: FilterMode; tagFilter: string | null }>({ filter, tagFilter });
   useEffect(() => {
     if (filter === "all" && !tagFilter) {
       setSnapshotIndices(null);
+      prevFilterRef.current = { filter, tagFilter };
       return;
     }
+    if (words.length === 0) return; // 词汇未加载完，不拍空快照
+
+    const filterChanged = prevFilterRef.current.filter !== filter
+      || prevFilterRef.current.tagFilter !== tagFilter;
+    prevFilterRef.current = { filter, tagFilter };
+
+    // 仅在筛选条件变化 或 快照为空（模块切换回来后首次加载）时重算
+    if (!filterChanged && snapshotIndices !== null && snapshotIndices.size > 0) return;
+
     const indices = new Set<number>();
     words.forEach((word, i) => {
       if (tagFilter && !word.tags?.includes(tagFilter)) return;
@@ -220,8 +238,8 @@ export default function VocabularyPage() {
       if (filter === "unlearned" && (word.mastery === "weak" || word.mastery === "fuzzy" || !word.mastery)) { indices.add(i); return; }
     });
     setSnapshotIndices(indices);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在筛选条件变化时重算，不跟踪 words
-  }, [filter, tagFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, tagFilter, words]);
 
   // 统计各筛选数量
   const kanjiCount = words.filter((w) => w.kanji).length;
@@ -254,6 +272,60 @@ export default function VocabularyPage() {
     fuzzy: "模糊",
     unlearned: "待复习",
   };
+
+  // 停止循环播放
+  const stopLoop = useCallback(() => {
+    loopAbortRef.current = true;
+    stopAudio();
+    setLoopPlaying(false);
+    setLoopCurrentIndex(-1);
+  }, []);
+
+  // 启动三遍循环播放
+  const startLoop = useCallback(async () => {
+    if (filteredWords.length === 0) return;
+    loopAbortRef.current = false;
+    setLoopPlaying(true);
+
+    for (let i = 0; i < filteredWords.length; i++) {
+      if (loopAbortRef.current) break;
+
+      const { word } = filteredWords[i];
+      setLoopCurrentIndex(i);
+
+      // 滚动到当前卡片
+      const el = cardRefs.current.get(i);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+
+      // 播放三遍，每遍间隔 0.8 秒
+      for (let r = 0; r < 3; r++) {
+        if (loopAbortRef.current) break;
+        await speakVocabAsync(word.word, currentLesson, word.reading);
+        if (loopAbortRef.current) break;
+        if (r < 2) {
+          await new Promise((resolve) => setTimeout(resolve, 800));
+        }
+      }
+
+      // 词间间隔 1.2 秒
+      if (!loopAbortRef.current && i < filteredWords.length - 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1200));
+      }
+    }
+
+    if (!loopAbortRef.current) {
+      setLoopPlaying(false);
+      setLoopCurrentIndex(-1);
+    }
+  }, [filteredWords, currentLesson]);
+
+  // 切换筛选/标签/模式/课次时，停止循环播放
+  useEffect(() => {
+    if (loopPlaying) stopLoop();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, tagFilter, mode, currentLesson]);
 
   return (
     <div>
@@ -338,6 +410,20 @@ export default function VocabularyPage() {
                 {showMeaningGlobal ? <Eye size={14} /> : <EyeOff size={14} />}
                 中文
               </button>
+              {/* 三遍循环播放 */}
+              <button
+                onClick={() => loopPlaying ? stopLoop() : void startLoop()}
+                disabled={filteredWords.length === 0}
+                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5 ${
+                  loopPlaying
+                    ? "border-weak text-weak bg-weak/5"
+                    : "border-border text-text-secondary hover:border-primary/40 hover:text-primary"
+                }`}
+                title={loopPlaying ? "停止播放" : "三遍循环播放"}
+              >
+                {loopPlaying ? <Square size={14} /> : <Repeat size={14} />}
+                {loopPlaying ? "停止" : "循环×3"}
+              </button>
               {/* 刷新 */}
               <button
                 onClick={() => void loadWords(true)}
@@ -360,49 +446,45 @@ export default function VocabularyPage() {
           )}
         </div>
 
-        {/* 筛选 chips（仅学习模式显示） */}
-        {mode === "study" && (
-          <div className="flex items-center gap-2 mt-2 flex-wrap">
-            {(
-              [
-                { key: "all", label: "全部", count: words.length },
-                { key: "unlearned", label: "待复习", count: unlearnedCount },
-                { key: "weak", label: "不会", count: weakCount },
-                { key: "fuzzy", label: "模糊", count: fuzzyCount },
-              ] as { key: FilterMode; label: string; count: number }[]
-            ).map(({ key, label, count }) => (
-              <button
-                key={key}
-                onClick={() => setFilter(key)}
-                className={`text-xs px-2.5 py-1 rounded-full border transition-colors flex items-center gap-1 ${
-                  filter === key
-                    ? key === "weak"
-                      ? "border-weak text-weak bg-weak/10"
-                      : key === "fuzzy"
-                        ? "border-fuzzy text-fuzzy bg-fuzzy/10"
-                        : "border-primary text-primary bg-primary/10"
-                    : "border-border text-text-muted hover:border-border/80 hover:text-text-secondary"
-                }`}
-              >
-                {label}
-                <span className={`text-[10px] px-1 py-0.5 rounded-full ${
-                  filter === key ? "bg-current/10" : "bg-border/50"
-                }`}>
-                  {count}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
+        {/* 筛选 chips */}
+        <div className="flex items-center gap-2 mt-2 flex-wrap">
+          {(
+            [
+              { key: "all", label: "全部", count: words.length },
+              { key: "unlearned", label: "待复习", count: unlearnedCount },
+              { key: "weak", label: "不会", count: weakCount },
+              { key: "fuzzy", label: "模糊", count: fuzzyCount },
+            ] as { key: FilterMode; label: string; count: number }[]
+          ).map(({ key, label, count }) => (
+            <button
+              key={key}
+              onClick={() => setFilter(key)}
+              className={`text-xs px-2.5 py-1 rounded-full border transition-colors flex items-center gap-1 ${
+                filter === key
+                  ? key === "weak"
+                    ? "border-weak text-weak bg-weak/10"
+                    : key === "fuzzy"
+                      ? "border-fuzzy text-fuzzy bg-fuzzy/10"
+                      : "border-primary text-primary bg-primary/10"
+                  : "border-border text-text-muted hover:border-border/80 hover:text-text-secondary"
+              }`}
+            >
+              {label}
+              <span className={`text-[10px] px-1 py-0.5 rounded-full ${
+                filter === key ? "bg-current/10" : "bg-border/50"
+              }`}>
+                {count}
+              </span>
+            </button>
+          ))}
+        </div>
 
-        {/* 标签分组筛选（仅学习模式显示） */}
-        {mode === "study" && (
-          <TagFilterChips
-            words={words}
-            activeTag={tagFilter}
-            onTagChange={setTagFilter}
-          />
-        )}
+        {/* 标签分组筛选 */}
+        <TagFilterChips
+          words={words}
+          activeTag={tagFilter}
+          onTagChange={setTagFilter}
+        />
       </div>
 
       <div className="mb-4">
@@ -413,10 +495,7 @@ export default function VocabularyPage() {
         <ModuleQuizPanel
           module="vocabulary"
           lessonId={currentLesson}
-          content={(tagFilter
-            ? words.filter((w) => w.tags?.includes(tagFilter))
-            : words
-          ).map(({ mastery, showMeaning, showKanji, showJapanese, ...item }) => item)}
+          content={filteredWords.map(({ word: { mastery, showMeaning, showKanji, showJapanese, ...item } }) => item)}
           contentLoading={loading}
           contentError={error}
         />
@@ -470,11 +549,34 @@ export default function VocabularyPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {filteredWords.map(({ word, originalIndex }) => (
+                  {/* 循环播放进度 */}
+                  {loopPlaying && (
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/20 text-xs text-primary">
+                      <Repeat size={14} className="animate-spin" />
+                      <span>
+                        正在播放 {loopCurrentIndex + 1}/{filteredWords.length} ·
+                        每词三遍
+                      </span>
+                      <button
+                        onClick={stopLoop}
+                        className="ml-auto underline underline-offset-2 hover:opacity-70"
+                      >
+                        停止
+                      </button>
+                    </div>
+                  )}
+                  {filteredWords.map(({ word, originalIndex }, filteredIndex) => (
                     <div
                       key={`${word.word}-${originalIndex}`}
-                      className="bg-bg-card border border-border rounded-xl p-4
-                                 hover:border-primary/20 transition-colors"
+                      ref={(el) => {
+                        if (el) cardRefs.current.set(filteredIndex, el);
+                        else cardRefs.current.delete(filteredIndex);
+                      }}
+                      className={`bg-bg-card border rounded-xl p-4 transition-colors ${
+                        loopPlaying && filteredIndex === loopCurrentIndex
+                          ? "border-primary ring-2 ring-primary/20"
+                          : "border-border hover:border-primary/20"
+                      }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1">

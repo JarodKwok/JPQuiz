@@ -103,6 +103,11 @@ export async function recordStudySession(
   emitDataUpdated();
 }
 
+export async function clearStudySessions() {
+  await db.studySessions.clear();
+  emitDataUpdated();
+}
+
 export async function getTodayStudyMinutes() {
   const today = new Date().toISOString().slice(0, 10);
   const sessions = await db.studySessions.where("date").equals(today).toArray();

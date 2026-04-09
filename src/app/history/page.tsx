@@ -8,8 +8,9 @@ import {
   BookOpen,
   Target,
   TriangleAlert,
+  Trash2,
 } from "lucide-react";
-import { getHistoryStats, type HistoryStats } from "@/services/progress";
+import { getHistoryStats, clearStudySessions, type HistoryStats } from "@/services/progress";
 import { generateProgressInsight } from "@/services/progress-insights";
 import { subscribeDataUpdated } from "@/services/events";
 import { useLessonStore } from "@/stores/lessonStore";
@@ -90,6 +91,11 @@ export default function HistoryPage() {
     }
   };
 
+  const handleClearStudyTime = async () => {
+    if (!confirm("确定要清除所有学习时长记录吗？此操作不可恢复。")) return;
+    await clearStudySessions();
+  };
+
   return (
     <div>
       <div className="mb-6">
@@ -131,12 +137,20 @@ export default function HistoryPage() {
           <div className="p-2 rounded-lg bg-accent/10">
             <Clock size={20} className="text-accent" />
           </div>
-          <div>
+          <div className="flex-1 min-w-0">
             <p className="text-2xl font-semibold text-text whitespace-nowrap">
               {stats.totalStudyMinutes} 分
             </p>
             <p className="text-xs text-text-muted">本课学习时长</p>
           </div>
+          <button
+            onClick={() => void handleClearStudyTime()}
+            className="p-1.5 rounded-lg text-text-muted hover:text-weak
+                       hover:bg-weak/10 transition-colors shrink-0"
+            title="清除学习时长"
+          >
+            <Trash2 size={14} />
+          </button>
         </div>
 
         <div className="bg-bg-card border border-border rounded-xl p-4 flex items-center gap-3">

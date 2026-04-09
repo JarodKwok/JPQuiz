@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { BookOpen, Languages, Trash2, RefreshCw } from "lucide-react";
+import { BookOpen, Languages, Trash2, RefreshCw, Volume2 } from "lucide-react";
 import { getWeakItems, updateMasteryById, deleteMasteryById } from "@/services/mastery";
 import { subscribeDataUpdated } from "@/services/events";
 import { useLessonStore } from "@/stores/lessonStore";
+import { speakVocab, speakExample, speakText } from "@/services/audio";
 import MasteryButtons from "@/components/lesson/MasteryButtons";
 import type { MasteryStatus, MasteryLevel, Module } from "@/types";
 
@@ -46,6 +47,28 @@ export default function WeakPointsPage() {
       );
     }
   };
+
+  const playItem = (item: MasteryStatus) => {
+    switch (item.module) {
+      case "vocabulary":
+        // itemKey 是单词读音（如 たかい），同时作为 text 和 reading
+        void speakVocab(item.itemKey, item.lessonId, item.itemKey);
+        break;
+      case "examples":
+        // itemKey 是日语原文（例句或句型）
+        void speakExample(item.itemKey, item.lessonId);
+        break;
+      case "text":
+        // itemKey 格式为 text:1:line:0，无法直接播放
+        // 尝试用 Web Speech API 读 itemKey 中无法提取的内容，跳过
+        break;
+      case "grammar":
+        // itemKey 是语法 ID（如 G1-1），无音频
+        break;
+    }
+  };
+
+  const canPlay = (module: Module) => module === "vocabulary" || module === "examples";
 
   const handleDelete = async (id: number) => {
     await deleteMasteryById(id);
@@ -123,9 +146,21 @@ export default function WeakPointsPage() {
                         第 {item.lessonId} 課
                       </span>
                     </div>
-                    <p className="text-sm font-medium text-text">
-                      {item.itemKey}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-text">
+                        {item.itemKey}
+                      </p>
+                      {canPlay(item.module) && (
+                        <button
+                          onClick={() => playItem(item)}
+                          className="p-1 rounded-lg hover:bg-primary/10 text-text-muted
+                                     hover:text-primary transition-colors shrink-0"
+                          title="播放发音"
+                        >
+                          <Volume2 size={14} />
+                        </button>
+                      )}
+                    </div>
                     <p className="text-[11px] text-text-muted mt-1">
                       复习 {item.reviewCount} 次 · 最后复习{" "}
                       {item.lastReviewedAt

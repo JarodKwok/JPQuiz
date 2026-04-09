@@ -126,6 +126,7 @@ export async function tryQuestionBank({
   count,
   targetKeys = [],
   weakKeys = [],
+  scopeKeys = [],
 }: {
   lessonId: number;
   module: Module;
@@ -134,6 +135,7 @@ export async function tryQuestionBank({
   count: number;
   targetKeys?: string[];
   weakKeys?: string[];
+  scopeKeys?: string[];
 }): Promise<QuizData | null> {
   const allQuestions = await loadQuestions(lessonId, module, questionType);
   if (allQuestions.length === 0) return null;
@@ -142,7 +144,10 @@ export async function tryQuestionBank({
 
   switch (sourceType) {
     case "random_scope": {
-      selected = shuffle(allQuestions).slice(0, count);
+      const pool = scopeKeys.length > 0
+        ? filterByKeys(allQuestions, scopeKeys)
+        : allQuestions;
+      selected = shuffle(pool).slice(0, count);
       break;
     }
     case "manual_targets": {
@@ -160,12 +165,15 @@ export async function tryQuestionBank({
       break;
     }
     case "mixed": {
+      const scopePool = scopeKeys.length > 0
+        ? filterByKeys(allQuestions, scopeKeys)
+        : allQuestions;
       const priorityKeys = [...targetKeys, ...weakKeys];
       const priority = priorityKeys.length > 0
-        ? filterByKeys(allQuestions, priorityKeys)
+        ? filterByKeys(scopePool, priorityKeys)
         : [];
       const prioritySet = new Set(priority.map((q) => q.id));
-      const rest = allQuestions.filter((q) => !prioritySet.has(q.id));
+      const rest = scopePool.filter((q) => !prioritySet.has(q.id));
       const combined = [...shuffle(priority), ...shuffle(rest)];
       selected = combined.slice(0, count);
       break;

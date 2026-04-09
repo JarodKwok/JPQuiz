@@ -184,6 +184,48 @@ export async function speakAll(
   currentAudio = null;
 }
 
+/**
+ * 播放词汇音频并等待播放结束（用于循环播放）
+ * 返回 true 表示正常播放完毕，false 表示被中断
+ */
+export function speakVocabAsync(
+  text: string,
+  lessonId: number,
+  reading: string
+): Promise<boolean> {
+  stopCurrentAudio();
+
+  const lesson = `lesson_${String(lessonId).padStart(2, "0")}`;
+  const filename = `vocab_${sanitizeReading(reading)}.mp3`;
+  const url = `${BOOKS_AUDIO_BASE}/${lesson}/${filename}`;
+
+  return new Promise((resolve) => {
+    const audio = new Audio(url);
+    currentAudio = audio;
+    audio.onended = () => {
+      if (currentAudio === audio) currentAudio = null;
+      resolve(true);
+    };
+    audio.onerror = () => {
+      currentAudio = null;
+      // 回退到 Web Speech API
+      if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+        resolve(true);
+        return;
+      }
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "ja-JP";
+      utterance.rate = 0.8;
+      utterance.onend = () => resolve(true);
+      utterance.onerror = () => resolve(true);
+      speechSynthesis.speak(utterance);
+    };
+    audio.play().catch(() => {
+      audio.onerror?.(new Event("error"));
+    });
+  });
+}
+
 export function stop() {
   stopCurrentAudio();
   if (typeof window !== "undefined" && "speechSynthesis" in window) {

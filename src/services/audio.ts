@@ -73,7 +73,7 @@ export async function speakVocab(
   lessonId: number,
   reading: string
 ): Promise<void> {
-  stopCurrentAudio();
+  stop(); // 停止所有音频（含 Web Speech API）
 
   const lesson = `lesson_${String(lessonId).padStart(2, "0")}`;
   const filename = `vocab_${sanitizeReading(reading)}.mp3`;
@@ -99,7 +99,7 @@ export async function speakExample(
   lessonId: number,
   type: "example" | "pattern" = "example"
 ): Promise<void> {
-  stopCurrentAudio();
+  stop();
 
   const hash = await sha256Hash(text);
   const lesson = `lesson_${String(lessonId).padStart(2, "0")}`;
@@ -128,7 +128,7 @@ export async function speak(
   type: AudioType,
   itemIndex: number
 ): Promise<void> {
-  stopCurrentAudio();
+  stop();
 
   if (itemIndex < 0) {
     fallback(text);
@@ -151,18 +151,21 @@ export async function speak(
 export async function speakAll(
   items: { text: string; lessonId: number; type: AudioType; index: number }[]
 ): Promise<void> {
-  stopCurrentAudio();
+  stop();
 
   for (const item of items) {
     if (item.index < 0) continue;
     const url = buildUrl(item.lessonId, item.type, item.index);
 
     const played = await new Promise<boolean>((resolve) => {
+      let resolved = false;
+      const finish = (v: boolean) => { if (!resolved) { resolved = true; resolve(v); } };
       const audio = new Audio(url);
       currentAudio = audio;
-      audio.onended = () => resolve(true);
-      audio.onerror = () => resolve(false);
-      audio.play().catch(() => resolve(false));
+      audio.onended = () => finish(true);
+      audio.play().then(() => {
+        audio.onerror = () => finish(false);
+      }).catch(() => finish(false));
     });
 
     if (!played) {
@@ -187,28 +190,53 @@ export async function speakAll(
 /**
  * 播放词汇音频并等待播放结束（用于循环播放）
  * 返回 true 表示正常播放完毕，false 表示被中断
+ *
+ * 先用 fetch HEAD 检查 MP3 是否存在，存在则播放 MP3，
+ * 不存在则直接用 Web Speech API，两条路径完全互斥。
  */
-export function speakVocabAsync(
+export async function speakVocabAsync(
   text: string,
   lessonId: number,
   reading: string
 ): Promise<boolean> {
-  stopCurrentAudio();
+  // 停止所有音频（包括 Web Speech API），防止与上一次播放重叠
+  stop();
 
   const lesson = `lesson_${String(lessonId).padStart(2, "0")}`;
   const filename = `vocab_${sanitizeReading(reading)}.mp3`;
   const url = `${BOOKS_AUDIO_BASE}/${lesson}/${filename}`;
 
-  return new Promise((resolve) => {
-    const audio = new Audio(url);
-    currentAudio = audio;
-    audio.onended = () => {
-      if (currentAudio === audio) currentAudio = null;
-      resolve(true);
-    };
-    audio.onerror = () => {
-      currentAudio = null;
-      // 回退到 Web Speech API
+  // 先检查 MP3 是否存在
+  let mp3ok = false;
+  try {
+    const resp = await fetch(url, { method: "HEAD" });
+    mp3ok = resp.ok;
+  } catch {
+    mp3ok = false;
+  }
+
+  if (mp3ok) {
+    // ── 路径 A：播放 MP3，绝不调用 speechSynthesis ──
+    return new Promise((resolve) => {
+      const audio = new Audio(url);
+      currentAudio = audio;
+      audio.addEventListener("ended", () => {
+        if (currentAudio === audio) currentAudio = null;
+        resolve(true);
+      }, { once: true });
+      // 安全网：解码错误等异常时也 resolve，不回退
+      audio.addEventListener("error", () => {
+        if (currentAudio === audio) currentAudio = null;
+        resolve(true);
+      }, { once: true });
+      audio.play().catch(() => {
+        if (currentAudio === audio) currentAudio = null;
+        resolve(true);
+      });
+    });
+  } else {
+    // ── 路径 B：Web Speech API，不涉及 Audio 元素 ──
+    return new Promise((resolve) => {
       if (typeof window === "undefined" || !("speechSynthesis" in window)) {
         resolve(true);
         return;
@@ -219,17 +247,34 @@ export function speakVocabAsync(
       utterance.onend = () => resolve(true);
       utterance.onerror = () => resolve(true);
       speechSynthesis.speak(utterance);
-    };
-    audio.play().catch(() => {
-      audio.onerror?.(new Event("error"));
     });
-  });
+  }
 }
 
 export function stop() {
   stopCurrentAudio();
   if (typeof window !== "undefined" && "speechSynthesis" in window) {
     speechSynthesis.cancel();
+  }
+}
+
+/** 暂停当前播放的音频 */
+export function pause() {
+  if (currentAudio && !currentAudio.paused) {
+    currentAudio.pause();
+  }
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    speechSynthesis.pause();
+  }
+}
+
+/** 恢复暂停的音频 */
+export function resume() {
+  if (currentAudio && currentAudio.paused && currentAudio.currentTime > 0) {
+    currentAudio.play();
+  }
+  if (typeof window !== "undefined" && "speechSynthesis" in window) {
+    speechSynthesis.resume();
   }
 }
 
@@ -243,7 +288,7 @@ export async function speakText(
   japanese: string,
   lessonId: number
 ): Promise<void> {
-  stopCurrentAudio();
+  stop();
 
   const hash = await sha256Hash(japanese);
   const lesson = `lesson_${String(lessonId).padStart(2, "0")}`;
@@ -271,7 +316,7 @@ export async function speakTextAll(
   lessonId: number,
   onProgress?: (index: number) => void
 ): Promise<void> {
-  stopCurrentAudio();
+  stop();
 
   for (let i = 0; i < lines.length; i++) {
     // 如果外部调用了 stop()，currentAudio 会被清空 → 中断循环
@@ -283,11 +328,14 @@ export async function speakTextAll(
     onProgress?.(i);
 
     const played = await new Promise<boolean>((resolve) => {
+      let resolved = false;
+      const finish = (v: boolean) => { if (!resolved) { resolved = true; resolve(v); } };
       const audio = new Audio(url);
       currentAudio = audio;
-      audio.onended = () => resolve(true);
-      audio.onerror = () => resolve(false);
-      audio.play().catch(() => resolve(false));
+      audio.onended = () => finish(true);
+      audio.play().then(() => {
+        audio.onerror = () => finish(false);
+      }).catch(() => finish(false));
     });
 
     // stop() 被调用时 currentAudio 已置 null，退出循环

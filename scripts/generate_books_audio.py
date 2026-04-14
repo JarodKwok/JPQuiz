@@ -68,12 +68,17 @@ def sanitize_for_filename(reading: str) -> str:
 
 
 def speak_text_for(reading: str) -> str:
-    """生成朗读用文本（去掉 〜 等语法标记）"""
+    """生成朗读用文本（去掉 〜 等语法标记）
+    追加句号防止 Edge TTS 重复朗读（对单词级文本普遍存在此问题）。"""
     text = reading.replace('〜', '').replace('～', '')
     text = re.sub(r'\[([^\]]*)\]', r'\1', text)
     text = re.sub(r'（[^）]*）', '', text)
     text = text.strip()
-    return text or reading
+    result = text or reading
+    # Edge TTS 对短文本容易重复朗读，追加句号使其视为完整句子
+    if not result.endswith(('。', '？', '！', '?', '!')):
+        result += '。'
+    return result
 
 
 def parse_book1(book_path: str) -> dict:

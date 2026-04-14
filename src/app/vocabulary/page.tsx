@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Volume2, RefreshCw, Loader2, Eye, EyeOff, Hash, Languages, BookOpen, Repeat, Square } from "lucide-react";
+import { Volume2, RefreshCw, Loader2, Eye, EyeOff, Hash, Languages, BookOpen, Repeat, Square, Pause, Play } from "lucide-react";
 import MasteryButtons from "@/components/lesson/MasteryButtons";
 import ModuleQuizPanel from "@/components/quiz/ModuleQuizPanel";
 import ModuleModeTabs from "@/components/quiz/ModuleModeTabs";
@@ -12,7 +12,7 @@ import { useStudySession } from "@/hooks/useStudySession";
 import { getModuleContent } from "@/services/content";
 import { getMasteryMap, saveMastery } from "@/services/mastery";
 import { syncLearningProgress } from "@/services/progress";
-import { speakVocab, speakVocabAsync, stop as stopAudio, playVictory } from "@/services/audio";
+import { speakVocab, speakVocabAsync, stop as stopAudio, pause as pauseAudio, resume as resumeAudio, playVictory } from "@/services/audio";
 import { subscribeDataUpdated } from "@/services/events";
 import { useModuleUIStore } from "@/stores/moduleUIStore";
 import type { MasteryLevel } from "@/types";
@@ -51,8 +51,11 @@ export default function VocabularyPage() {
 
   // 三遍循环播放
   const [loopPlaying, setLoopPlaying] = useState(false);
+  const [loopPaused, setLoopPaused] = useState(false);
   const [loopCurrentIndex, setLoopCurrentIndex] = useState(-1);
   const loopAbortRef = useRef(false);
+  const loopPauseRef = useRef(false);
+  const loopResumeResolver = useRef<(() => void) | null>(null);
   const cardRefs = useRef<Map<number, HTMLDivElement>>(new Map());
 
   // 同步 UI 状态到 store（模块切换后可恢复）
@@ -273,19 +276,56 @@ export default function VocabularyPage() {
     unlearned: "待复习",
   };
 
-  // 停止循环播放
+  // 如果处于暂停状态，等待恢复后再继续
+  const waitIfPaused = useCallback(() => {
+    if (!loopPauseRef.current) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      loopResumeResolver.current = resolve;
+    });
+  }, []);
+
+  // 停止循环播放（彻底结束）
   const stopLoop = useCallback(() => {
     loopAbortRef.current = true;
+    loopPauseRef.current = false;
+    // 如果暂停中，释放等待
+    if (loopResumeResolver.current) {
+      loopResumeResolver.current();
+      loopResumeResolver.current = null;
+    }
     stopAudio();
     setLoopPlaying(false);
+    setLoopPaused(false);
     setLoopCurrentIndex(-1);
+  }, []);
+
+  // 暂停 / 恢复循环播放
+  const toggleLoopPause = useCallback(() => {
+    if (!loopPauseRef.current) {
+      // 暂停
+      loopPauseRef.current = true;
+      setLoopPaused(true);
+      pauseAudio();
+    } else {
+      // 恢复
+      loopPauseRef.current = false;
+      setLoopPaused(false);
+      resumeAudio();
+      // 释放 waitIfPaused 的等待
+      if (loopResumeResolver.current) {
+        loopResumeResolver.current();
+        loopResumeResolver.current = null;
+      }
+    }
   }, []);
 
   // 启动三遍循环播放
   const startLoop = useCallback(async () => {
     if (filteredWords.length === 0) return;
     loopAbortRef.current = false;
+    loopPauseRef.current = false;
     setLoopPlaying(true);
+    setLoopPaused(false);
 
     for (let i = 0; i < filteredWords.length; i++) {
       if (loopAbortRef.current) break;
@@ -302,7 +342,11 @@ export default function VocabularyPage() {
       // 播放三遍，每遍间隔 0.8 秒
       for (let r = 0; r < 3; r++) {
         if (loopAbortRef.current) break;
+        await waitIfPaused();
+        if (loopAbortRef.current) break;
         await speakVocabAsync(word.word, currentLesson, word.reading);
+        if (loopAbortRef.current) break;
+        await waitIfPaused();
         if (loopAbortRef.current) break;
         if (r < 2) {
           await new Promise((resolve) => setTimeout(resolve, 800));
@@ -317,9 +361,24 @@ export default function VocabularyPage() {
 
     if (!loopAbortRef.current) {
       setLoopPlaying(false);
+      setLoopPaused(false);
       setLoopCurrentIndex(-1);
     }
-  }, [filteredWords, currentLesson]);
+  }, [filteredWords, currentLesson, waitIfPaused]);
+
+  // 空格键：暂停 / 恢复循环播放
+  useEffect(() => {
+    if (!loopPlaying) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === "Space" && !e.repeat) {
+        // 避免触发页面滚动或按钮点击
+        e.preventDefault();
+        toggleLoopPause();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [loopPlaying, toggleLoopPause]);
 
   // 切换筛选/标签/模式/课次时，停止循环播放
   useEffect(() => {
@@ -411,19 +470,42 @@ export default function VocabularyPage() {
                 中文
               </button>
               {/* 三遍循环播放 */}
-              <button
-                onClick={() => loopPlaying ? stopLoop() : void startLoop()}
-                disabled={filteredWords.length === 0}
-                className={`text-xs px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5 ${
-                  loopPlaying
-                    ? "border-weak text-weak bg-weak/5"
-                    : "border-border text-text-secondary hover:border-primary/40 hover:text-primary"
-                }`}
-                title={loopPlaying ? "停止播放" : "三遍循环播放"}
-              >
-                {loopPlaying ? <Square size={14} /> : <Repeat size={14} />}
-                {loopPlaying ? "停止" : "循环×3"}
-              </button>
+              {loopPlaying ? (
+                <>
+                  <button
+                    onClick={toggleLoopPause}
+                    className={`text-xs px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5 ${
+                      loopPaused
+                        ? "border-primary text-primary bg-primary/5"
+                        : "border-accent text-accent bg-accent/5"
+                    }`}
+                    title={loopPaused ? "继续播放 (空格)" : "暂停 (空格)"}
+                  >
+                    {loopPaused ? <Play size={14} /> : <Pause size={14} />}
+                    {loopPaused ? "继续" : "暂停"}
+                  </button>
+                  <button
+                    onClick={stopLoop}
+                    className="text-xs px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5
+                               border-weak text-weak bg-weak/5"
+                    title="停止播放"
+                  >
+                    <Square size={14} />
+                    停止
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => void startLoop()}
+                  disabled={filteredWords.length === 0}
+                  className="text-xs px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5
+                             border-border text-text-secondary hover:border-primary/40 hover:text-primary"
+                  title="三遍循环播放"
+                >
+                  <Repeat size={14} />
+                  循环×3
+                </button>
+              )}
               {/* 刷新 */}
               <button
                 onClick={() => void loadWords(true)}
@@ -551,11 +633,18 @@ export default function VocabularyPage() {
                 <div className="space-y-3">
                   {/* 循环播放进度 */}
                   {loopPlaying && (
-                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-primary/5 border border-primary/20 text-xs text-primary">
-                      <Repeat size={14} className="animate-spin" />
+                    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs ${
+                      loopPaused
+                        ? "bg-accent/5 border border-accent/20 text-accent"
+                        : "bg-primary/5 border border-primary/20 text-primary"
+                    }`}>
+                      {loopPaused
+                        ? <Pause size={14} />
+                        : <Repeat size={14} className="animate-spin" />
+                      }
                       <span>
-                        正在播放 {loopCurrentIndex + 1}/{filteredWords.length} ·
-                        每词三遍
+                        {loopPaused ? "已暂停" : "正在播放"} {loopCurrentIndex + 1}/{filteredWords.length} ·
+                        每词三遍 · 空格键{loopPaused ? "继续" : "暂停"}
                       </span>
                       <button
                         onClick={stopLoop}

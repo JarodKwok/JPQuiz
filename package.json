@@ -25,6 +25,8 @@
     "build:questions": "tsx scripts/build-question-bank.ts"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.13",
     "vitest": "^3.2.4"
   },
   "dependencies": {
@@ -33,6 +35,8 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.27",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.9.0",
     "clsx": "^2.1.1",
     "dexie": "^4.3.0",
     "eslint": "^9.39.4",

@@ -2,6 +2,7 @@
 
 import type { AISettings } from "@/types";
 
+// AI 设置为全局共享（管理员统一配置），不按用户隔离
 const SETTINGS_STORAGE_KEY = "jpquiz-ai-settings";
 const LEGACY_STORAGE_KEY = "jpquiz-ai-settings";
 const KEY_DB_NAME = "jpquiz-secure-storage";
@@ -161,7 +162,8 @@ export async function saveSecureAISettings(settings: AISettings) {
 export async function loadSecureAISettings(): Promise<AISettings | null> {
   if (typeof window === "undefined") return null;
 
-  const stored = localStorage.getItem(SETTINGS_STORAGE_KEY);
+  // 优先读 per-user key，兼容旧 key
+  const stored = localStorage.getItem(SETTINGS_STORAGE_KEY) ?? localStorage.getItem(LEGACY_STORAGE_KEY);
   if (!stored) return null;
 
   try {

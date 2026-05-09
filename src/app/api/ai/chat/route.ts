@@ -5,7 +5,22 @@ import {
   extractResponseEventContent,
   extractResponsesContent,
 } from "@/services/ai/route-utils";
-import { normalizeStoredAIConfig } from "@/services/ai/settings";
+import { findAccountById } from "@/lib/db/repos/auth-repo";
+import {
+  currentYearMonth,
+  getAdminModelConfig,
+  getMonthlyUsage,
+  incrementMonthlyUsage,
+  type AdminModelConfig,
+} from "@/lib/db/repos/admin-config-repo";
+import {
+  FREE_MONTHLY_QUOTA,
+  PREMIUM_MONTHLY_QUOTA,
+} from "@/lib/db/config";
+import {
+  getServerUserId,
+  UnauthorizedError,
+} from "@/lib/db/server-user";
 
 const MAX_UPSTREAM_RETRIES = 2;
 const RETRYABLE_STATUSES = new Set([408, 409, 429, 500, 502, 503, 504]);
@@ -85,10 +100,7 @@ async function fetchWithRetry(
         return res;
       }
 
-      const delayMs = getRetryDelayMs(
-        attempt,
-        res.headers.get("retry-after")
-      );
+      const delayMs = getRetryDelayMs(attempt, res.headers.get("retry-after"));
       console.warn(
         `[AI API] Upstream ${res.status}, retrying in ${delayMs}ms (attempt ${attempt + 1}/${MAX_UPSTREAM_RETRIES + 1})`
       );
@@ -113,28 +125,82 @@ async function fetchWithRetry(
 }
 
 export async function POST(req: NextRequest) {
+  // ── 1. 鉴权 ────────────────────────────────────────────────────────────
+  let userId: string;
   try {
-    const body = await req.json();
-    const { messages, config, provider, jsonMode } = body;
-    const normalizedConfig = normalizeStoredAIConfig(provider, config);
-
-    if (!normalizedConfig.apiKey) {
-      return NextResponse.json(
-        { error: "API Key is required" },
-        { status: 400 }
-      );
+    userId = await getServerUserId();
+  } catch (err) {
+    if (err instanceof UnauthorizedError) {
+      return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
     }
+    throw err;
+  }
 
-    const baseUrl = normalizedConfig.baseUrl.replace(/\/$/, "");
-    const wireApi = normalizedConfig.wireApi || "chat";
+  const account = findAccountById(userId);
+  if (!account) {
+    return NextResponse.json({ error: "account not found" }, { status: 404 });
+  }
 
-    if (wireApi === "responses") {
-      return handleResponsesAPI(baseUrl, normalizedConfig, messages);
+  // ── 2. 配额检查 ────────────────────────────────────────────────────────
+  const isPremium =
+    account.tier === "premium" && (account.tierExpiresAt ?? 0) > Date.now();
+  const monthlyQuota = isPremium ? PREMIUM_MONTHLY_QUOTA : FREE_MONTHLY_QUOTA;
+  const yearMonth = currentYearMonth();
+  const used = getMonthlyUsage(userId, yearMonth);
+
+  if (used >= monthlyQuota) {
+    return NextResponse.json(
+      {
+        error: "quota_exhausted",
+        message: isPremium
+          ? "本月会员配额已用完，下月初自动恢复"
+          : "本月免费 AI 次数已用完，升级会员可获得更多额度",
+        monthlyQuota,
+        used,
+        remaining: 0,
+        isPremium,
+        yearMonth,
+      },
+      { status: 402 }
+    );
+  }
+
+  // ── 3. 读 admin 配置 ───────────────────────────────────────────────────
+  const cfg = getAdminModelConfig();
+  if (!cfg) {
+    return NextResponse.json(
+      {
+        error: "service_not_configured",
+        message: "管理员尚未配置 AI 服务，请联系管理员",
+      },
+      { status: 503 }
+    );
+  }
+
+  // ── 4. 解析请求体（messages 必填，jsonMode 可选；其它字段忽略）─────────
+  let body: Record<string, unknown> = {};
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "invalid body" }, { status: 400 });
+  }
+
+  const messages = body.messages as { role: string; content: string }[] | undefined;
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return NextResponse.json({ error: "messages required" }, { status: 400 });
+  }
+  const jsonMode = !!body.jsonMode;
+
+  // ── 5. 计数 +1（先扣后调上游，防滥用）─────────────────────────────────
+  incrementMonthlyUsage(userId, yearMonth);
+
+  // ── 6. 调上游 ───────────────────────────────────────────────────────────
+  try {
+    const baseUrl = cfg.baseUrl.replace(/\/$/, "");
+    if (cfg.wireApi === "responses") {
+      return await handleResponsesAPI(baseUrl, cfg, messages);
     } else {
-      return handleChatCompletionsAPI(baseUrl, normalizedConfig, messages, {
-        jsonMode: !!jsonMode,
-        provider: provider || "",
-      });
+      return await handleChatCompletionsAPI(baseUrl, cfg, messages, { jsonMode });
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
@@ -147,45 +213,45 @@ export async function POST(req: NextRequest) {
 /** Standard OpenAI Chat Completions API (/v1/chat/completions) */
 async function handleChatCompletionsAPI(
   baseUrl: string,
-  config: { apiKey: string; model: string },
+  cfg: AdminModelConfig,
   messages: { role: string; content: string }[],
-  options?: { jsonMode?: boolean; provider?: string }
+  options: { jsonMode: boolean }
 ) {
   const endpoint = buildChatEndpoint(baseUrl);
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    Authorization: `Bearer ${config.apiKey}`,
+    Authorization: `Bearer ${cfg.apiKey}`,
   };
 
-  // OpenRouter 推荐的额外 headers
-  if (options?.provider === "openrouter") {
+  if (cfg.provider === "openrouter") {
     headers["HTTP-Referer"] = "https://jpquiz.app";
     headers["X-Title"] = "JPQuiz";
   }
 
   const baseBody: Record<string, unknown> = {
-    model: config.model || "gpt-5.4",
+    model: cfg.model,
     messages,
     temperature: 0.7,
     max_tokens: 2048,
   };
 
+  if (options.jsonMode) {
+    baseBody.response_format = { type: "json_object" };
+  }
+
   console.log("[AI Chat API] Request:", {
     endpoint,
-    model: baseBody.model,
-    provider: options?.provider,
+    model: cfg.model,
+    provider: cfg.provider,
     messageCount: messages.length,
   });
 
-  // 先尝试 streaming，失败则回退 non-streaming
   let res = await fetchWithRetry(endpoint, {
     method: "POST",
     headers,
     body: JSON.stringify({ ...baseBody, stream: true }),
   });
-
-  console.log("[AI Chat API] Stream response:", res.status, res.headers.get("content-type"));
 
   if (!res.ok) {
     console.warn("[AI Chat API] Stream failed, retrying without streaming...");
@@ -194,7 +260,6 @@ async function handleChatCompletionsAPI(
       headers,
       body: JSON.stringify(baseBody),
     });
-    console.log("[AI Chat API] Non-stream response:", res.status);
   }
 
   if (!res.ok) {
@@ -218,36 +283,35 @@ async function handleChatCompletionsAPI(
 /** OpenAI Responses API (/v1/responses) */
 async function handleResponsesAPI(
   baseUrl: string,
-  config: { apiKey: string; model: string },
+  cfg: AdminModelConfig,
   messages: { role: string; content: string }[]
 ) {
   const endpoint = buildResponsesEndpoint(baseUrl);
 
-  // Convert chat messages to Responses API input format
   const input = messages
-    .filter((m: { role: string }) => m.role !== "system")
-    .map((m: { role: string; content: string }) => ({
-      role: m.role,
-      content: m.content,
-    }));
+    .filter((m) => m.role !== "system")
+    .map((m) => ({ role: m.role, content: m.content }));
 
-  const systemMsg = messages.find(
-    (m: { role: string }) => m.role === "system"
-  );
+  const systemMsg = messages.find((m) => m.role === "system");
   const instructions = systemMsg?.content || "";
+
+  const reqBody: Record<string, unknown> = {
+    model: cfg.model,
+    instructions,
+    input,
+    stream: true,
+  };
+  if (cfg.reasoningEffort) {
+    reqBody.reasoning = { effort: cfg.reasoningEffort };
+  }
 
   const res = await fetchWithRetry(endpoint, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${config.apiKey}`,
+      Authorization: `Bearer ${cfg.apiKey}`,
     },
-    body: JSON.stringify({
-      model: config.model || "gpt-5.4",
-      instructions,
-      input,
-      stream: true,
-    }),
+    body: JSON.stringify(reqBody),
   });
 
   if (!res.ok) {
@@ -267,10 +331,8 @@ async function handleResponsesAPI(
 
   const contentType = res.headers.get("content-type") || "";
 
-  // Non-streaming JSON response
   if (contentType.includes("application/json")) {
     const data = await res.json();
-    console.log("[AI Responses API] JSON response:", JSON.stringify(data).slice(0, 300));
     const content = extractResponsesContent(data);
     return sseFromText(content || "AI 未返回有效内容。");
   }
@@ -297,7 +359,6 @@ async function handleResponsesAPI(
             const trimmed = line.trim();
             if (!trimmed) continue;
 
-            // Responses API uses "event:" and "data:" lines
             if (trimmed.startsWith("data: ")) {
               const data = trimmed.slice(6);
               if (data === "[DONE]") {
@@ -306,19 +367,14 @@ async function handleResponsesAPI(
               }
               try {
                 const parsed = JSON.parse(data);
-                const content = extractResponseEventContent(
-                  parsed,
-                  hasStreamedText
-                );
+                const content = extractResponseEventContent(parsed, hasStreamedText);
 
                 if (content) {
                   hasStreamedText = true;
                   const chatChunk = JSON.stringify({
                     choices: [{ delta: { content } }],
                   });
-                  controller.enqueue(
-                    encoder.encode(`data: ${chatChunk}\n\n`)
-                  );
+                  controller.enqueue(encoder.encode(`data: ${chatChunk}\n\n`));
                 }
               } catch {
                 // skip malformed JSON
@@ -374,7 +430,6 @@ async function forwardOrConvertStream(res: globalThis.Response): Promise<Respons
 
   if (contentType.includes("application/json")) {
     const data = await res.json();
-    console.log("[AI Chat API] JSON response:", JSON.stringify(data).slice(0, 200));
     const content =
       data.choices?.[0]?.message?.content || "AI 未返回有效内容。";
     return sseFromText(content);

@@ -33,7 +33,7 @@ def is_japanese(text: str) -> bool:
 def extract_lesson_content(ts_content: str) -> dict:
     """
     从 builtin-content.ts 提取各课的日语文本。
-    按课号分段，提取词汇单词、例句、课文行、听力句。
+    按课号分段，提取词汇单词、例句、课文行。
     """
     lessons = {}
 
@@ -58,15 +58,11 @@ def extract_lesson_content(ts_content: str) -> dict:
         # 提取课文行：line("japanese", ...) 第1个参数是日语句子
         lines = re.findall(r'\bline\("([^"]+)"', chunk)
 
-        # 提取听力：q("text", ...) 第1个参数是听力文本
-        listening = re.findall(r'\bq\("([^"]+)"', chunk)
-
         # 只保留含日文的文本
         lessons[lesson_num] = {
             'vocab':     [t for t in vocab     if is_japanese(t)],
             'examples':  [t for t in examples  if is_japanese(t)],
             'lines':     [t for t in lines     if is_japanese(t)],
-            'listening': [t for t in listening if is_japanese(t)],
         }
 
     return lessons
@@ -153,15 +149,14 @@ def main():
     for lesson_num in sorted(lessons.keys()):
         content = lessons[lesson_num]
         lesson_dir = f"{output_base}/lesson_{lesson_num:02d}"
-        lesson_entry = {"vocab": [], "examples": [], "lines": [], "listening": []}
+        lesson_entry = {"vocab": [], "examples": [], "lines": []}
 
         v_count  = len(content['vocab'])
         ex_count = len(content['examples'])
         ln_count = len(content['lines'])
-        li_count = len(content['listening'])
 
         print(f"📖 第 {lesson_num:02d} 课  "
-              f"词汇:{v_count}  例句:{ex_count}  课文:{ln_count}行  听力:{li_count}")
+              f"词汇:{v_count}  例句:{ex_count}  课文:{ln_count}行")
 
         # 词汇
         for i, word in enumerate(content['vocab']):
@@ -189,15 +184,6 @@ def main():
             total_chars += chars
             total_files += 1
             lesson_entry["lines"].append({"text": line_text, "file": rel_path})
-
-        # 听力
-        for i, li_text in enumerate(content['listening']):
-            rel_path = f"lesson_{lesson_num:02d}/listening_{i:03d}.mp3"
-            full_path = f"{output_base}/{rel_path}"
-            chars = generate_audio(client, li_text, full_path, args.voice, args.speed, args.dry_run)
-            total_chars += chars
-            total_files += 1
-            lesson_entry["listening"].append({"text": li_text, "file": rel_path})
 
         lesson_index[str(lesson_num)] = lesson_entry
 

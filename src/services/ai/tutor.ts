@@ -7,7 +7,6 @@ import type {
   TextContent,
   VocabularyItem,
 } from "@/types/content";
-import { db } from "@/services/db";
 import { getBuiltinModuleContent } from "@/data/builtin-content";
 import { getTodayStudyMinutes, getLessonProgressSummary } from "@/services/progress";
 import { getWeakItems } from "@/services/mastery";
@@ -27,7 +26,7 @@ const BASE_TUTOR_SAFETY_PROMPT = `你是「大家的日语 AI陪练」，专注�
 硬性边界：
 1. 你的主要职责是帮助学习者理解和练习日语，不提供与学习无关的泛化聊天服务。
 2. 遇到黄赌毒、政治、宗教、战争、暴力、违法、自残、仇恨、极端主义等敏感或危险主题时，必须拒绝继续展开，也不要以“词汇学习”“翻译”“例句教学”等方式变相提供帮助。
-3. 若学习者请求明显偏离日语学习主题，请简短拒绝，并把话题拉回课次内容、词汇、语法、课文、例句、听力、复习建议。
+3. 若学习者请求明显偏离日语学习主题，请简短拒绝，并把话题拉回课次内容、词汇、语法、课文、例句、复习建议。
 4. 不编造教材范围外的结论；如信息不足，要明确说明并基于当前课次内容给出最稳妥的回答。`;
 
 const TUTOR_RESPONSE_STYLE_PROMPT = `篇幅与粒度控制规则：
@@ -144,12 +143,9 @@ async function buildLearnerSnapshotText(
       getTodayStudyMinutes(),
       getWeakItems(),
       listWrongAnswersByScope(lessonId, module),
-      db.quizSessions
-        .where({ lessonId, module })
-        .toArray()
-        .then((items) =>
-          items.sort((left, right) => right.createdAt.localeCompare(left.createdAt)).slice(0, 2)
-        ),
+      fetch(`/api/db/quiz/list-by-scope?lessonId=${lessonId}&module=${encodeURIComponent(module)}`)
+        .then((res) => (res.ok ? res.json() : []))
+        .then((items: Array<{ title: string; questionType: string; accuracy: number; createdAt: string }>) => items.slice(0, 2)),
     ]);
 
   const weakItemsText = weakItems

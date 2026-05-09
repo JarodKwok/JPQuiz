@@ -3,7 +3,7 @@
 使用 Edge TTS 批量生成《大家的日语》1-25课音频
 
 规则:
-- 词汇 / 例句 / 听力 → 男声 ja-JP-KeitaNeural
+- 词汇 / 例句 → 男声 ja-JP-KeitaNeural
 - 课文对话 → 按说话人性别选声音
   - 已知女性角色 → ja-JP-NanamiNeural
   - 其他/未知     → ja-JP-KeitaNeural
@@ -92,15 +92,12 @@ def extract_lessons(ts_content: str) -> dict:
         examples = [t for t in re.findall(r'\be\("([^"]+)"', chunk)    if is_japanese(t)]
         # 课文行：line("japanese", ...) 第1参数，保留原始文本（含说话人前缀）
         lines    = [t for t in re.findall(r'\bline\("([^"]+)"', chunk)  if is_japanese(t)]
-        # 听力：q("text", ...) 第1参数
-        listening= [t for t in re.findall(r'\bq\("([^"]+)"', chunk)    if is_japanese(t)]
 
         lessons[lesson_num] = {
             "vocab": vocab,
             "patterns": patterns,
             "examples": examples,
             "lines": lines,
-            "listening": listening,
         }
 
     return lessons
@@ -127,7 +124,7 @@ async def generate_lesson(lesson_num: int, content: dict, output_base: str, dry_
     if not dry_run:
         Path(lesson_dir).mkdir(parents=True, exist_ok=True)
 
-    index = {"vocab": [], "patterns": [], "examples": [], "lines": [], "listening": []}
+    index = {"vocab": [], "patterns": [], "examples": [], "lines": []}
     tasks = []
 
     # 词汇 → 男声
@@ -169,14 +166,6 @@ async def generate_lesson(lesson_num: int, content: dict, output_base: str, dry_
         if not dry_run and (not os.path.exists(full) or overwrite):
             tasks.append(gen(spoken_text, voice, full))
 
-    # 听力 → 男声
-    for i, li_text in enumerate(content["listening"]):
-        rel = f"lesson_{lesson_num:02d}/listening_{i:03d}.mp3"
-        full = f"{output_base}/{rel}"
-        index["listening"].append({"text": li_text, "file": rel})
-        if not dry_run and (not os.path.exists(full) or overwrite):
-            tasks.append(gen(li_text, VOICE_MALE, full))
-
     if tasks:
         # 顺序生成，避免微软服务限流/超时
         for coro in tasks:
@@ -185,9 +174,9 @@ async def generate_lesson(lesson_num: int, content: dict, output_base: str, dry_
             except Exception:
                 pass  # 错误已在 gen() 内打印，继续生成其余文件
 
-    total = len(index["vocab"]) + len(index["patterns"]) + len(index["examples"]) + len(index["lines"]) + len(index["listening"])
+    total = len(index["vocab"]) + len(index["patterns"]) + len(index["examples"]) + len(index["lines"])
     print(f"  ✅ 第{lesson_num:02d}课  词汇:{len(index['vocab'])}  句型:{len(index['patterns'])}  "
-          f"例句:{len(index['examples'])}  课文:{len(index['lines'])}  听力:{len(index['listening'])}  合计:{total}")
+          f"例句:{len(index['examples'])}  课文:{len(index['lines'])}  合计:{total}")
     return index
 
 async def main_async(args):
@@ -222,7 +211,7 @@ async def main_async(args):
         idx = await generate_lesson(lesson_num, lessons[lesson_num], output_base, args.dry_run, getattr(args, 'overwrite', False))
         master_index[str(lesson_num)] = idx
         total_files += (len(idx["vocab"]) + len(idx["examples"]) +
-                        len(idx["lines"]) + len(idx["listening"]))
+                        len(idx["lines"]))
 
     print(f"\n总计: {total_files} 个音频文件")
 

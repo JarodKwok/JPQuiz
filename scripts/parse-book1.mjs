@@ -427,47 +427,6 @@ function parseText(section) {
 }
 
 // ============================================================
-// 从现有 builtin-content.ts 提取listening数据
-// ============================================================
-
-function extractListeningFromBuiltin(builtinContent) {
-  const listeningMap = {};
-
-  // 找到每个课的 listening: [...] 块
-  // 用状态机提取括号内的内容
-  for (let lessonNum = 1; lessonNum <= 25; lessonNum++) {
-    // 找到该课的起始位置（N: lesson({）
-    const lessonRegex = new RegExp(`\\b${lessonNum}:\\s*lesson\\s*\\(\\s*\\{`);
-    const lessonMatch = builtinContent.search(lessonRegex);
-    if (lessonMatch === -1) continue;
-
-    // 在该课的范围内找 listening: [
-    const lessonSlice = builtinContent.slice(lessonMatch);
-    const listenMatch = lessonSlice.search(/\blistening\s*:/);
-    if (listenMatch === -1) continue;
-
-    // 从 [ 开始提取到配对的 ]
-    const startBracket = lessonSlice.indexOf('[', listenMatch);
-    if (startBracket === -1) continue;
-
-    let depth = 0;
-    let i = startBracket;
-    for (; i < lessonSlice.length; i++) {
-      if (lessonSlice[i] === '[') depth++;
-      else if (lessonSlice[i] === ']') {
-        depth--;
-        if (depth === 0) { i++; break; }
-      }
-    }
-
-    const listenText = lessonSlice.slice(startBracket, i);
-    listeningMap[lessonNum] = listenText;
-  }
-
-  return listeningMap;
-}
-
-// ============================================================
 // 解析整本书
 // ============================================================
 
@@ -537,7 +496,7 @@ function parseBook(content) {
 // 生成 TypeScript 代码
 // ============================================================
 
-function generateTS(lessons, listeningMap) {
+function generateTS(lessons) {
   const lines = [];
 
   // 文件头
@@ -545,7 +504,6 @@ function generateTS(lessons, listeningMap) {
   lines.push(`  ExampleItem,`);
   lines.push(`  ExamplesContent,`);
   lines.push(`  GrammarItem,`);
-  lines.push(`  ListeningItem,`);
   lines.push(`  ModuleContentMap,`);
   lines.push(`  SentencePatternItem,`);
   lines.push(`  TextContent,`);
@@ -645,24 +603,12 @@ function generateTS(lessons, listeningMap) {
   lines.push(`});`);
   lines.push(``);
 
-  lines.push(`const q = (`);
-  lines.push(`  text: string,`);
-  lines.push(`  options: string[],`);
-  lines.push(`  answer: number`);
-  lines.push(`): ListeningItem => ({`);
-  lines.push(`  text,`);
-  lines.push(`  options,`);
-  lines.push(`  answer,`);
-  lines.push(`});`);
-  lines.push(``);
-
   lines.push(`function lesson(content: {`);
   lines.push(`  vocabulary: VocabularyItem[];`);
   lines.push(`  grammar: GrammarItem[];`);
   lines.push(`  patterns: SentencePatternItem[];`);
   lines.push(`  examples: ExampleItem[];`);
   lines.push(`  text: TextContent;`);
-  lines.push(`  listening: ListeningItem[];`);
   lines.push(`}): BuiltinLessonContent {`);
   lines.push(`  const examples: ExamplesContent = {`);
   lines.push(`    patterns: content.patterns,`);
@@ -673,7 +619,6 @@ function generateTS(lessons, listeningMap) {
   lines.push(`    grammar: content.grammar,`);
   lines.push(`    examples,`);
   lines.push(`    text: content.text,`);
-  lines.push(`    listening: content.listening,`);
   lines.push(`  };`);
   lines.push(`}`);
   lines.push(``);
@@ -693,7 +638,6 @@ function generateTS(lessons, listeningMap) {
     }
 
     const { vocab, grammar, patterns, examples, text } = lesson;
-    const listening = listeningMap[lessonNum] || '[]';
 
     lines.push(`  // ============================================================================`);
     lines.push(`  // 第${lessonNum}课`);
@@ -758,9 +702,6 @@ function generateTS(lessons, listeningMap) {
     }
     lines.push(`    ]),`);
 
-    // listening (原样保留)
-    lines.push(`    listening: ${listening},`);
-
     lines.push(`  }),`);
     lines.push(``);
   }
@@ -800,27 +741,11 @@ function generateTS(lessons, listeningMap) {
 console.log('读取 book1.md...');
 const bookContent = readFileSync(join(ROOT, 'books/book1.md'), 'utf-8');
 
-// 优先从 /tmp/original-builtin.ts 读取（保存了原始listening数据），否则从当前文件读取
-console.log('读取原始 builtin-content.ts（提取listening数据）...');
-let existingBuiltinPath = '/tmp/original-builtin.ts';
-try {
-  readFileSync(existingBuiltinPath, 'utf-8');
-  console.log('使用 /tmp/original-builtin.ts');
-} catch {
-  existingBuiltinPath = join(ROOT, 'src/data/builtin-content.ts');
-  console.log('使用当前 builtin-content.ts');
-}
-const existingBuiltin = readFileSync(existingBuiltinPath, 'utf-8');
-
 console.log('解析书籍内容...');
 const lessons = parseBook(bookContent);
 
-console.log('提取existing listening数据...');
-const listeningMap = extractListeningFromBuiltin(existingBuiltin);
-console.log(`提取到 ${Object.keys(listeningMap).length} 课的listening数据`);
-
 console.log('生成 TypeScript 代码...');
-const tsCode = generateTS(lessons, listeningMap);
+const tsCode = generateTS(lessons);
 
 const outputPath = join(ROOT, 'src/data/builtin-content.ts');
 writeFileSync(outputPath, tsCode, 'utf-8');

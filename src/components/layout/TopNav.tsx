@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Menu } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useLessonStore } from "@/stores/lessonStore";
+import { useAccountStore } from "@/stores/accountStore";
 import { getLessonProgressSummary, getTodayStudyMinutes } from "@/services/progress";
 import { subscribeDataUpdated } from "@/services/events";
 
@@ -16,6 +17,8 @@ export default function TopNav({ onMenuClick }: TopNavProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { currentLesson, setCurrentLesson, hydrated } = useLessonStore();
+  // 注意：是否显示简化版按当前路径，不按账户角色 —— admin 在前台时也要看到课程选择器
+  const inAdminMode = pathname.startsWith("/admin");
   const [todayMinutes, setTodayMinutes] = useState(0);
   const [progress, setProgress] = useState({
     vocabulary: 0,
@@ -40,7 +43,7 @@ export default function TopNav({ onMenuClick }: TopNavProps) {
   }, [currentLesson]);
 
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || inAdminMode) return;
 
     queueMicrotask(() => {
       void loadStats();
@@ -48,7 +51,7 @@ export default function TopNav({ onMenuClick }: TopNavProps) {
     return subscribeDataUpdated(() => {
       void loadStats();
     });
-  }, [hydrated, loadStats]);
+  }, [hydrated, inAdminMode, loadStats]);
 
   const handleLessonChange = (lesson: number) => {
     setCurrentLesson(lesson);
@@ -59,6 +62,22 @@ export default function TopNav({ onMenuClick }: TopNavProps) {
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
+  // 后台模式：简化 TopNav
+  if (inAdminMode) {
+    return (
+      <header className="h-14 border-b border-border bg-bg-card flex items-center px-4 gap-4 shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+        <button
+          onClick={onMenuClick}
+          className="lg:hidden p-1.5 rounded-lg hover:bg-border/40 text-text-secondary"
+        >
+          <Menu size={20} />
+        </button>
+        <span className="text-sm font-medium text-text">管理面板</span>
+        <div className="flex-1" />
+      </header>
+    );
+  }
+
   return (
     <header className="h-14 border-b border-border bg-bg-card flex items-center px-4 gap-4 shrink-0 shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
       {/* Mobile menu button */}
@@ -68,7 +87,6 @@ export default function TopNav({ onMenuClick }: TopNavProps) {
       >
         <Menu size={20} />
       </button>
-
 
       {/* Lesson selector */}
       <div className="flex items-center gap-2">

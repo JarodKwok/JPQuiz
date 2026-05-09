@@ -116,6 +116,7 @@ export type MasteryLevel = "mastered" | "fuzzy" | "weak" | "new";
 
 export interface LearningProgress {
   id?: number;
+  ownerId: string;
   lessonId: number;
   module: Module;
   masteryPercent: number;
@@ -126,6 +127,7 @@ export interface LearningProgress {
 
 export interface MasteryStatus {
   id?: number;
+  ownerId: string;
   lessonId: number;
   module: Module;
   itemKey: string;
@@ -137,6 +139,7 @@ export interface MasteryStatus {
 
 export interface WrongAnswer {
   id?: number;
+  ownerId: string;
   lessonId: number;
   module: Module;
   question: string;
@@ -152,6 +155,7 @@ export interface WrongAnswer {
 
 export interface StudySession {
   id?: number;
+  ownerId: string;
   date: string;
   durationSeconds: number;
   module?: Module;

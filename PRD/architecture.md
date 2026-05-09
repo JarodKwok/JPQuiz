@@ -1,7 +1,7 @@
 # 大家的日语 AI陪练 — 技术架构文档
 
 > 描述应用的技术选型、目录结构、数据流、类型系统及核心服务实现。
-> 更新时间：2026-04-01
+> 更新时间：2026-05-09
 
 ---
 
@@ -9,12 +9,14 @@
 
 | 层次 | 技术 | 版本 | 用途 |
 |------|------|------|------|
-| 框架 | Next.js | ^16.2 | App Router，服务端/客户端混合渲染 |
+| 框架 | Next.js | ^16.2 | App Router + Turbopack，注意 middleware 已重命名为 `proxy.ts` |
 | 语言 | TypeScript | ^5.9 | 全栈类型安全 |
 | UI | React | ^19.2 | 组件渲染 |
 | 样式 | Tailwind CSS | ^4.2 | 原子化 CSS |
 | 组件图标 | lucide-react | ^0.577 | 统一图标库 |
-| 本地数据库 | Dexie (IndexedDB) | ^4.3 | 学习进度、错题、AI 对话持久化 |
+| 服务端数据库 | better-sqlite3 (WAL) | ^12.9 | 用户 / 会话 / 学习数据 / AI 用量 / 订单 / 系统日志权威存储 |
+| 客户端缓存 | Dexie (IndexedDB) | ^4.3 | 题库与本地缓存，首次进入自动迁移到服务端 |
+| 密码哈希 | bcryptjs | ^2.4 | 纯 JS bcrypt，无原生编译依赖 |
 | 全局状态 | Zustand | ^5.0 | 轻量客户端状态管理 |
 | Markdown 渲染 | react-markdown + remark-gfm | ^10 / ^4 | AI 回答 Markdown 渲染 |
 | 音频 TTS | Edge TTS (`edge-tts`) | Python | 离线预生成词汇/例句/课文音频 |
@@ -37,37 +39,42 @@ JPQuiz/
 │           └── pattern_*.mp3
 │
 ├── public/
+│   ├── qr/                       # 个人收款码图（alipay-monthly.png 等）
 │   └── audio/
-│       └── lessons/              # 课文/听力音频（索引命名，不入 Git）
+│       └── lessons/              # 课文音频（索引命名，不入 Git）
 │           ├── index.json
 │           └── lesson_XX/
-│               ├── text_000.mp3
-│               └── listening_000.mp3
+│               └── text_000.mp3
 │
 ├── scripts/
 │   ├── parse-book1.mjs           # book1.md → builtin-content.ts
 │   ├── migrate_vocab_audio.py    # 词汇音频迁移/生成
 │   ├── generate_books_audio.py   # 词汇音频全量重生成
 │   ├── migrate_examples_audio.py # 例句/句型音频生成
-│   ├── generate_edge_tts.py      # 课文/听力音频生成
-│   └── test_audio.py             # 音频完整性自动化测试
+│   ├── generate_edge_tts.py      # 课文音频生成
+│   ├── test_audio.py             # 音频完整性自动化测试
+│   └── bootstrap-admin.mjs       # 老账号 username/password 引导（CLI）
 │
 ├── src/
+│   ├── proxy.ts                  # Next.js 16 边缘代理（cookie 检查 + 路由保护）
 │   ├── app/                      # Next.js App Router 页面
 │   │   ├── layout.tsx            # 根布局（metadata、AppShell）
 │   │   ├── page.tsx              # 首页（课次选择）
-│   │   ├── vocabulary/           # 词汇模块页面
-│   │   ├── grammar/              # 语法模块页面
-│   │   ├── examples/             # 例句/句型模块页面
-│   │   ├── text/                 # 课文模块页面
-│   │   ├── listening/            # 听力模块页面
-│   │   ├── weak-points/          # 薄弱项专项复习
-│   │   ├── history/              # 学习记录
-│   │   ├── settings/             # 设置（AI、偏好）
-│   │   ├── ai/                   # AI 陪练聊天页面
+│   │   ├── (auth)/               # 公开路由组：login / register / forgot-password
+│   │   ├── (app)/                # 已登录路由组：业务页面
+│   │   │   ├── vocabulary / grammar / examples / text
+│   │   │   ├── weak-points / history
+│   │   │   ├── subscribe         # 用户开通会员（扫支付宝码报付）
+│   │   │   ├── account/reset-required  # 被 admin 批准后强制重设页
+│   │   │   └── admin/            # 管理后台 dashboard / users / orders / password-resets / settings / logs
 │   │   └── api/
-│   │       └── audio/
-│   │           └── books/[...path]/route.ts  # 词汇/例句音频 HTTP 服务
+│   │       ├── auth/             # register / login / logout / me / forgot/* / reset-after-approval / suggest-username
+│   │       ├── orders/           # 用户侧 report-paid / my
+│   │       ├── admin/            # users / orders / password-resets / model-config
+│   │       ├── ai/               # chat / quota
+│   │       ├── cron/check-expiry # 定时任务（X-Cron-Secret 鉴权）
+│   │       ├── db/               # 客户端遗留 db proxy（迁移期）
+│   │       └── audio/books/[...path]/route.ts
 │   │
 │   ├── components/
 │   │   ├── layout/               # AppShell、Sidebar、TopNav
@@ -81,36 +88,52 @@ JPQuiz/
 │   ├── hooks/                    # React 自定义 Hooks
 │   ├── lib/                      # 工具函数
 │   │
+│   ├── lib/
+│   │   ├── db/
+│   │   │   ├── schema.sql        # SQLite 表结构（用户 / 会话 / 学习 / AI / 订单 / 日志）
+│   │   │   ├── sqlite.ts         # 数据库单例 + 幂等 ALTER TABLE 迁移
+│   │   │   ├── server-user.ts    # getServerUserId / requireAdminUserId
+│   │   │   ├── reset-token.ts    # 忘记密码 HMAC 临时签名
+│   │   │   ├── config.ts         # MAX_RECOVERY_ATTEMPTS / 配额 / 价格
+│   │   │   └── repos/            # auth / admin / subscription / ai / mastery / wrong / progress / quiz / log
+│   │   └── utils.ts
+│   │
 │   ├── services/
+│   │   ├── account.ts            # 客户端账户 API
 │   │   ├── audio.ts              # 音频播放服务（三级降级）
 │   │   ├── content.ts            # 内容访问封装
-│   │   ├── db.ts                 # Dexie 数据库定义
+│   │   ├── db.ts                 # Dexie 数据库定义（题库 / 客户端缓存）
+│   │   ├── migration.ts          # IndexedDB → 服务端 SQLite 一次性迁移
 │   │   ├── events.ts             # 全局事件总线
 │   │   ├── mastery.ts            # 掌握度管理
 │   │   ├── progress.ts           # 学习进度统计
-│   │   ├── prompts.ts            # AI 系统提示词（简单 AI 服务）
-│   │   ├── quiz.ts               # 题目生成逻辑
-│   │   ├── secure-settings.ts    # AI 设置加密存储
+│   │   ├── prompts.ts            # AI 系统提示词
+│   │   ├── quiz.ts               # 题目生成逻辑（题库优先 → AI 兜底）
+│   │   ├── question-bank.ts      # 预制题库读取
+│   │   ├── secure-settings.ts    # 已废弃的客户端 AI 设置（将移除）
 │   │   ├── wrongAnswers.ts       # 错题管理
+│   │   ├── systemLog.ts          # 客户端日志上报
+│   │   ├── account.ts / adminStats.ts
 │   │   └── ai/
-│   │       ├── client.ts         # AI API 调用客户端（流式）
+│   │       ├── client.ts         # AI API 调用客户端（流式 + AIRequestError 类型化错误）
 │   │       ├── memory.ts         # 对话记忆（短期/长期）
-│   │       ├── openai-adapter.ts # OpenAI 兼容适配层
-│   │       ├── provider.ts       # 多 Provider 配置
 │   │       ├── route-utils.ts    # AI API 路由工具
-│   │       ├── settings.ts       # AI 设置标准化
-│   │       ├── tutor.ts          # 导师 System Prompt 构建
-│   │       └── types.ts          # AI 内部类型
+│   │       ├── settings.ts       # AI 设置标准化（多走 admin 后台）
+│   │       └── tutor.ts          # 导师 System Prompt 构建
 │   │
-│   ├── stores/                   # Zustand 状态 Store
+│   ├── stores/                   # Zustand：account / lesson / module-ui
 │   └── types/
-│       ├── index.ts              # 全局类型（Module、AISettings 等）
+│       ├── index.ts              # 全局类型（Module 等）
+│       ├── account.ts            # UserProfile / AccountTier
 │       ├── content.ts            # 内容类型（VocabularyItem 等）
-│       └── quiz.ts               # 测验类型
+│       ├── log.ts / quiz.ts
+│       └── quiz.ts
 │
 └── PRD/
     ├── prd.md                    # 产品需求文档
     ├── resource.md               # 资源衔接文档
+    ├── tech-spec.md              # 技术规范
+    ├── ai-design.md              # AI 分层与记忆设计
     └── architecture.md           # 本文件（技术架构文档）
 ```
 
@@ -153,7 +176,7 @@ src/services/audio.ts
     │               └── books/audio/lesson_XX/{example|pattern}_{hash}.mp3
     │
     └── speak(text, lessonId, type, index)
-            └── GET /audio/lessons/lesson_XX/{text|listening}_{NNN}.mp3
+            └── GET /audio/lessons/lesson_XX/text_{NNN}.mp3
                     └── public/audio/lessons/lesson_XX/...（Next.js 静态）
 
 降级链：预生成 MP3 → Web Speech API → 静默
@@ -167,10 +190,10 @@ src/services/audio.ts
     ▼
 src/services/ai/tutor.ts（buildTutorConversationMessages）
     │
-    ├── loadSecureAISettings()          → AI 配置（API Key / Model）
+    ├── 服务端 admin_model_config        → AI 模型配置（apiKey / baseUrl / model，仅服务端持有）
     ├── getConversationContext()         → 最近 N 轮对话 + DB 摘要
     ├── buildLearnerSnapshotText()       → 进度快照（掌握度 / 错题 / 薄弱项）
-    ├── listRelevantLongTermMemories()   → 长期记忆（IndexedDB）
+    ├── listRelevantLongTermMemories()   → 长期记忆
     ├── buildModuleContextText()         → 当前课次内容摘要
     └── buildRequestShapeHint()          → 输出形态要求（表格/列表/简短）
             │
@@ -178,7 +201,14 @@ src/services/ai/tutor.ts（buildTutorConversationMessages）
     buildTutorSystemPrompt() → 组装 System Prompt
             │
             ▼
-    streamAIText(messages, onDelta)  → 流式返回 AI 回复
+    streamAIText(messages, onDelta)
+            │
+            ▼
+    POST /api/ai/chat
+            ├── 鉴权：getServerUserId（Cookie 校验）
+            ├── 配额：getMonthlyUsage(userId, YYYY-MM) vs tier 上限
+            ├── 计数 +1（先扣后调，防滥用）
+            └── 调用上游（OpenRouter / OpenAI / Kimi 等）→ 流式返回
             │
             ▼
     UI 实时渲染（react-markdown + remark-gfm）
@@ -265,7 +295,7 @@ interface ListeningItem {
 ### 学习状态类型（`src/types/index.ts`）
 
 ```typescript
-type Module = "vocabulary" | "grammar" | "text" | "examples" | "listening";
+type Module = "vocabulary" | "grammar" | "text" | "examples";
 type MasteryLevel = "mastered" | "fuzzy" | "weak" | "new";
 
 interface MasteryStatus {
@@ -287,7 +317,6 @@ interface MasteryStatus {
 | 例句 | `example_{SHA-256前8位}.mp3` | `example_a3f2b8c1.mp3` | `books/audio/lesson_XX/` |
 | 句型 | `pattern_{SHA-256前8位}.mp3` | `pattern_3d7e9b02.mp3` | `books/audio/lesson_XX/` |
 | 课文行 | `text_{NNN}.mp3`（三位序号） | `text_000.mp3` | `public/audio/lessons/lesson_XX/` |
-| 听力 | `listening_{NNN}.mp3` | `listening_000.mp3` | `public/audio/lessons/lesson_XX/` |
 
 **设计原则：**
 - 词汇/例句/句型使用**内容命名**：内容不变则文件名不变，天然支持复用，课程重排不影响缓存
@@ -387,7 +416,7 @@ node scripts/parse-book1.mjs
 source venv313/bin/activate
 python scripts/migrate_vocab_audio.py        # 词汇音频
 python scripts/migrate_examples_audio.py     # 例句/句型音频
-python scripts/generate_edge_tts.py          # 课文/听力音频
+python scripts/generate_edge_tts.py          # 课文音频
 
 # 音频完整性验证
 python scripts/test_audio.py
@@ -395,14 +424,31 @@ python scripts/test_audio.py
 
 ---
 
-## 九、关键设计决策
+## 九、认证与会员（v2 起）
+
+| 维度 | 选择 |
+|---|---|
+| 注册 / 登录 | 用户名 + 密码 + 自定义密保问题（无邮箱 / 短信通道） |
+| 会话 | HttpOnly cookie `jpquiz-sid` + 服务端 `sessions` 表，30 天滚动续期 |
+| 密码哈希 | bcryptjs cost=10 |
+| 找回密码 | 自助密保答题；连错 5 次锁账户 → 用户提交留言 → admin 后台批准 → 用户下次登录任意密码进强制重设页 |
+| 会员 | FREE 0 配额 / PREMIUM 100 次/月，按 `YYYY-MM` 分桶在 `ai_usage_monthly` 计数 |
+| 付费 | 支付宝个人收款码扫码 + 用户填订单号后 6 位 + admin 手动激活；订单生命周期表 `subscription_orders` |
+| 会员到期 | cron `/api/cron/check-expiry`（X-Cron-Secret 鉴权）扫 `tier_expires_at < now` 自动降级 |
+| Edge runtime 限制 | proxy.ts 只做 cookie 存在性检查；真正鉴权在 route handler 内 `getServerUserId` / `requireAdminUserId` |
+
+---
+
+## 十、关键设计决策
 
 | 决策 | 选择 | 原因 |
 |------|------|------|
-| 内容数据存储 | 静态 TS 文件（不用数据库） | 零部署依赖，纯前端可运行 |
-| 学习进度存储 | IndexedDB（Dexie） | 浏览器本地，无需后端 |
+| 学习内容存储 | 静态 TS 文件（`builtin-content.ts`） | 零部署依赖，启动即用 |
+| 业务数据存储 | 服务端 SQLite（WAL）权威 + IndexedDB 客户端缓存 | 多端 / 多设备需要服务端真相，迁移期保留本地缓存路径 |
 | 音频服务 | 预生成 MP3 + API Route | 比实时 TTS 响应快、成本低 |
-| AI Provider | OpenAI-compatible 接口 | 支持多服务商，用户自带 Key |
+| AI Provider | 平台统一配置（admin 后台），客户端不持有 Key | 用户零配置；防止 key 泄露；可不重启切 provider |
+| 题库 vs AI | 题库优先 fast path；命中筛选不足时回退 AI | 0 成本秒出；冷门组合下保证有题 |
 | 内容命名音频 | SHA-256 hash / 读音文本 | 内容变化自动失效，不受顺序影响 |
-| 认证 | 无（单用户） | 学习应用不需要账户体系 |
+| 认证策略 | 用户名 + 密码 + 密保（拒绝邮箱 / SMS） | 个人开发者无运营商资质，无邮件打扰 |
+| 付费策略 | 个人收款码 + 手动核单 | 无营业执照，无第三方聚合支付的合规风险 |
 ```

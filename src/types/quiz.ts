@@ -103,6 +103,7 @@ export interface QuizSessionQuestionRecord extends QuizResult {
 
 export interface QuizSessionRecord {
   id?: number;
+  ownerId: string;
   title: string;
   lessonId: number;
   module: Module;

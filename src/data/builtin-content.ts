@@ -947,7 +947,7 @@ export const BUILTIN_LESSON_CONTENT: Record<number, BuiltinLessonContent> = {
     vocabulary: [
       v("コンビニ", "コンビニ", "便利店", undefined, undefined, ["noun", "place", "katakana"]),
       v("あります", "あります", "在、有（不会活动的东西）", undefined, undefined, ["verb"]),
-      v("いま���", "います", "在、有（人、动物）", undefined, undefined, ["verb"]),
+      v("います", "います", "在、有（人、动物）", undefined, undefined, ["verb"]),
       v("とうきょうディズニーランド", "とうきょうディズニーランド", "东京迪士尼乐园", undefined, "東京ディズニーランド", ["noun", "place"]),
       v("けん", "けん", "县", undefined, "県", ["noun", "place"]),
       v("ちばけん", "ちばけん", "千叶县", undefined, "千葉県", ["noun", "place"]),

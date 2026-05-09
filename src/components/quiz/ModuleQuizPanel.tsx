@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Loader2, Sparkles, Target, Wand2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Module } from "@/types";
@@ -19,8 +20,39 @@ import {
   persistQuizSubmission,
   resolveQuizTargets,
 } from "@/services/quiz";
+import { AIRequestError } from "@/services/ai/client";
 import { useModuleUIStore } from "@/stores/moduleUIStore";
 import StructuredQuiz from "./StructuredQuiz";
+
+interface QuizErrorState {
+  text: string;
+  action?: { href: string; label: string };
+}
+
+/**
+ * 把组卷过程的 AI 错误翻译成用户能看懂的话。
+ * 触发场景：题库不够 → 兜底 AI → 命中配额 / 服务未配置 / 未登录。
+ */
+function quizErrorState(err: unknown): QuizErrorState {
+  if (err instanceof AIRequestError) {
+    if (err.code === "quota_exhausted") {
+      return err.isPremium
+        ? { text: "本月会员配额已用完，下月初自动恢复；可缩小筛选范围让题库直接出题。" }
+        : {
+            text: "题库中此筛选条件下题目不足，AI 实时生成需要开通会员；可改换筛选范围或题型再试。",
+            action: { href: "/subscribe", label: "开通会员" },
+          };
+    }
+    if (err.code === "service_not_configured") {
+      return { text: "AI 服务尚未配置，请联系管理员。" };
+    }
+    if (err.code === "unauthenticated") {
+      return { text: "登录已过期，请重新登录后再试。" };
+    }
+    return { text: `AI 生成失败：${err.serverMessage}` };
+  }
+  return { text: err instanceof Error ? err.message : "测验生成失败。" };
+}
 
 interface ModuleQuizPanelProps<M extends Module> {
   module: M;
@@ -89,7 +121,7 @@ export default function ModuleQuizPanel<M extends Module>({
   const [answers, setAnswers] = useState<Record<number, QuizDraftAnswer>>(savedQuiz.answers);
   const [submission, setSubmission] = useState<QuizSubmission | null>(savedQuiz.submission);
   const [feedback, setFeedback] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState<QuizErrorState | null>(null);
 
   // 同步测验状态到 store
   useEffect(() => {
@@ -105,7 +137,7 @@ export default function ModuleQuizPanel<M extends Module>({
     setResolvedTargets([]);
     setQuiz(null);
     setFeedback("");
-    setError("");
+    setError(null);
   }, [lessonId, module]);
 
   useEffect(() => {
@@ -149,12 +181,12 @@ export default function ModuleQuizPanel<M extends Module>({
     if (!content) return;
     if (!targetInput.trim()) {
       setResolvedTargets([]);
-      setError("请先输入想重点练的词、语法点或句子。");
+      setError({ text: "请先输入想重点练的词、语法点或句子。" });
       return;
     }
 
     setResolvingTargets(true);
-    setError("");
+    setError(null);
     setFeedback("");
 
     try {
@@ -172,7 +204,7 @@ export default function ModuleQuizPanel<M extends Module>({
         setFeedback(`已识别 ${targets.length} 个目标知识点。`);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "目标识别失败。");
+      setError(quizErrorState(err));
     } finally {
       setResolvingTargets(false);
     }
@@ -182,7 +214,7 @@ export default function ModuleQuizPanel<M extends Module>({
     if (!content) return;
 
     setGeneratingQuiz(true);
-    setError("");
+    setError(null);
     setFeedback("");
 
     try {
@@ -213,7 +245,7 @@ export default function ModuleQuizPanel<M extends Module>({
       setSubmission(null);
       setFeedback("题目已生成，直接开始答题吧。");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "测验生成失败。");
+      setError(quizErrorState(err));
     } finally {
       setGeneratingQuiz(false);
     }
@@ -224,7 +256,7 @@ export default function ModuleQuizPanel<M extends Module>({
 
     setSubmission(newSubmission);
     setSavingResult(true);
-    setError("");
+    setError(null);
     try {
       await persistQuizSubmission({
         lessonId,
@@ -237,7 +269,7 @@ export default function ModuleQuizPanel<M extends Module>({
         `本次测验已保存：${newSubmission.correctCount}/${newSubmission.totalQuestions} 正确，正确率 ${newSubmission.accuracy}%。`
       );
     } catch (err) {
-      setError(err instanceof Error ? err.message : "测验结果保存失败。");
+      setError({ text: err instanceof Error ? err.message : "测验结果保存失败。" });
     } finally {
       setSavingResult(false);
     }
@@ -453,8 +485,16 @@ export default function ModuleQuizPanel<M extends Module>({
         )}
 
         {error && (
-          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 flex items-start justify-between gap-3">
+            <span className="flex-1">{error.text}</span>
+            {error.action && (
+              <Link
+                href={error.action.href}
+                className="shrink-0 inline-flex items-center px-2.5 py-1 rounded-md bg-primary text-white text-xs font-medium hover:bg-primary/90 no-underline"
+              >
+                {error.action.label}
+              </Link>
+            )}
           </div>
         )}
       </div>

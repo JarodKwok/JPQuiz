@@ -25,11 +25,9 @@ from pathlib import Path
 
 # ── 配置 ─────────────────────────────────────────────────────────────────────
 BOOKS_AUDIO      = Path("books/audio")
-PUBLIC_AUDIO     = Path("public/audio/lessons")
 MANIFEST_PATH    = BOOKS_AUDIO / "manifest.json"
 EX_MANIFEST_PATH = BOOKS_AUDIO / "examples_manifest.json"
 TEXT_MANIFEST    = BOOKS_AUDIO / "text_manifest.json"
-OLD_INDEX        = PUBLIC_AUDIO / "index.json"
 DEV_URL       = "http://localhost:3000"
 
 MIN_MP3_SIZE  = 1024      # 最小有效 MP3 大小（bytes），低于此视为空/损坏
@@ -225,55 +223,6 @@ def check_text_audio_new(lesson_filter=None, verbose=False) -> dict:
     return stats
 
 
-def check_text_audio(lesson_filter=None, verbose=False) -> dict:
-    """检查 public/audio/lessons/ 中的听力音频（索引命名体系）"""
-    print(f"\n{c(BOLD,'── 听力音频检查 (public/audio/lessons/) ────────────────────')}")
-
-    if not OLD_INDEX.exists():
-        warn(f"index.json 不存在: {OLD_INDEX}")
-        warn("请运行: python scripts/generate_edge_tts.py --overwrite")
-        return {}
-
-    with open(OLD_INDEX, encoding='utf-8') as f:
-        index = json.load(f)
-
-    types_check = ['listening']
-    stats = {t: {'ok': 0, 'missing': 0, 'empty': 0} for t in types_check}
-    stats['total'] = 0
-
-    for lesson_num_str, lesson in sorted(index.get('lessons', {}).items(), key=lambda x: int(x[0])):
-        lesson_num = int(lesson_num_str)
-        if lesson_filter and lesson_num != lesson_filter:
-            continue
-
-        for type_key in types_check:
-            for item in lesson.get(type_key, []):
-                stats['total'] += 1
-                path = PUBLIC_AUDIO / item['file']
-                status = check_file(path)
-                if status == 'ok':
-                    stats[type_key]['ok'] += 1
-                else:
-                    stats[type_key]['missing' if status == 'missing' else 'empty'] += 1
-                    if verbose or status == 'empty':
-                        label = c(RED, f"[{status}]") if status != 'ok' else c(GREEN, '[ok]')
-                        print(f"    {label} {item['file']}")
-
-    for type_key in types_check:
-        s = stats[type_key]
-        total_t = s['ok'] + s['missing'] + s['empty']
-        if total_t == 0:
-            continue
-        label = {'listening': '听力'}[type_key]
-        if s['missing'] or s['empty']:
-            status_str = c(RED, f"缺失{s['missing']+s['empty']}个")
-        else:
-            status_str = c(GREEN, "全部存在")
-        print(f"  {label}: 共{total_t}个  {status_str}")
-
-    return stats
-
-
 # ── 2. HTTP API 测试 ──────────────────────────────────────────────────────────
 
 def test_http_vocab(lesson_filter=None) -> dict:
@@ -372,7 +321,6 @@ def main():
     vocab_stats   = check_vocab_audio(args.lesson, args.verbose)
     ex_stats      = check_examples_audio(args.lesson, args.verbose)
     new_text_stats = check_text_audio_new(args.lesson, args.verbose)
-    text_stats    = check_text_audio(args.lesson, args.verbose)
 
     if args.http:
         test_http_vocab(args.lesson)
@@ -402,16 +350,6 @@ def main():
             ok(f"课文音频: 全部 {new_text_stats.get('total', 0)} 个有效 ✓")
         else:
             err(f"课文音频: {nt_missing} 个缺失 → 运行 migrate_text_audio.py --overwrite")
-
-    text_missing = sum(
-        s.get('missing', 0) + s.get('empty', 0)
-        for k, s in text_stats.items()
-        if isinstance(s, dict)
-    )
-    if text_stats and text_missing == 0:
-        ok("听力音频: 全部存在 ✓")
-    elif text_missing:
-        err(f"听力音频: {text_missing} 个缺失 → 运行 generate_edge_tts.py --overwrite")
     print()
 
 

@@ -1,4 +1,3 @@
-import { db } from "./db";
 import type { Module, MasteryLevel, MasteryStatus } from "@/types";
 import { emitDataUpdated } from "./events";
 
@@ -9,29 +8,11 @@ export async function saveMastery(
   itemKey: string,
   status: MasteryLevel
 ) {
-  const existing = await db.masteryStatus
-    .where("[lessonId+module+itemKey]")
-    .equals([lessonId, module, itemKey])
-    .first();
-
-  if (existing) {
-    await db.masteryStatus.update(existing.id!, {
-      status,
-      reviewCount: existing.reviewCount + 1,
-      lastReviewedAt: new Date().toISOString(),
-    });
-  } else {
-    await db.masteryStatus.add({
-      lessonId,
-      module,
-      itemKey,
-      status,
-      reviewCount: 1,
-      lastReviewedAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-    });
-  }
-
+  await fetch("/api/db/mastery/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ lessonId, module, itemKey, status }),
+  });
   emitDataUpdated();
 }
 
@@ -40,42 +21,38 @@ export async function getMasteryMap(
   lessonId: number,
   module: Module
 ): Promise<Record<string, MasteryLevel>> {
-  const items = await db.masteryStatus
-    .where({ lessonId, module })
-    .toArray();
-
-  const map: Record<string, MasteryLevel> = {};
-  for (const item of items) {
-    map[item.itemKey] = item.status;
-  }
-  return map;
+  const res = await fetch(
+    `/api/db/mastery/map?lessonId=${lessonId}&module=${encodeURIComponent(module)}`
+  );
+  if (!res.ok) return {};
+  return res.json();
 }
 
 /** Get weak/fuzzy items, optionally filtered by lesson */
 export async function getWeakItems(lessonId?: number): Promise<MasteryStatus[]> {
-  const all = await db.masteryStatus
-    .where("status")
-    .anyOf(["weak", "fuzzy"])
-    .toArray();
-  if (lessonId === undefined) return all;
-  return all.filter((item) => item.lessonId === lessonId);
+  const params = new URLSearchParams();
+  if (lessonId !== undefined) params.set("lessonId", String(lessonId));
+  const res = await fetch(`/api/db/mastery/weak-items?${params}`);
+  if (!res.ok) return [];
+  return res.json();
 }
 
 /** Update a mastery item status (e.g. mark as mastered from weak-points page) */
 export async function updateMasteryById(id: number, status: MasteryLevel) {
-  const record = await db.masteryStatus.get(id);
-  if (!record) return;
-
-  await db.masteryStatus.update(id, {
-    status,
-    reviewCount: record.reviewCount + 1,
-    lastReviewedAt: new Date().toISOString(),
+  await fetch("/api/db/mastery/update-by-id", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, status }),
   });
   emitDataUpdated();
 }
 
 /** Delete a mastery record */
 export async function deleteMasteryById(id: number) {
-  await db.masteryStatus.delete(id);
+  await fetch("/api/db/mastery/delete-by-id", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
   emitDataUpdated();
 }

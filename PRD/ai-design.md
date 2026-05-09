@@ -118,7 +118,13 @@ Tutor 问答统一采用 4 层上下文：
 
 ## 五、配置体系
 
-### 可配置（设置页面）
+### 平台级（admin 后台 `/admin/settings`，单例 `admin_model_config` 表）
+
+- AI Provider（OpenRouter / OpenAI / Kimi / DeepSeek / 自定义 OpenAI 兼容端点）
+- baseUrl / apiKey / model / wireApi（chat 或 responses）
+- 整套配置只在服务端持有，**不下发客户端**；切换 provider 不需要重启
+
+### 用户级（设置页面）
 
 - 助手名字、教学风格、输出格式偏好、自定义导师提示词
 - 最近保留轮数、薄弱项数量、最近错题数量
@@ -132,6 +138,8 @@ Tutor 问答统一采用 4 层上下文：
 - 目标识别器与组卷器的核心格式约束
 
 原因：安全边界不能依赖用户配置；结构化功能需要稳定格式，不能被随意改坏。
+
+> 注：v1 曾使用「用户自带 API Key（BYOK）+ 客户端加密 localStorage」模式，已下线。理由是用户配置门槛高、key 管理风险大；改为平台统一支付后用户零配置即用。
 
 ---
 

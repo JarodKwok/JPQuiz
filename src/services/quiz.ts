@@ -15,7 +15,6 @@ import type {
   QuizResult,
   TranslationQuestion,
 } from "@/types/quiz";
-import { db } from "./db";
 import { streamAIText } from "./ai/client";
 import { getMasteryMap, saveMastery } from "./mastery";
 import { syncLearningProgress } from "./progress";
@@ -28,7 +27,6 @@ import {
 import { saveWrongAnswer } from "./wrongAnswers";
 import { getTagLabel } from "@/data/vocabulary-tags";
 import { tryQuestionBank } from "./question-bank";
-
 interface QuizTargetCandidate extends QuizResolvedTarget {
   masteryKey: string;
   aliases: string[];
@@ -411,17 +409,22 @@ async function getWeakQuizTargets(
   module: Module,
   candidates: QuizTargetCandidate[]
 ) {
-  const [masteryStatuses, wrongAnswers] = await Promise.all([
-    db.masteryStatus.where({ lessonId, module }).toArray(),
-    db.wrongAnswers.where({ lessonId, module }).toArray(),
-  ]);
+  const res = await fetch(
+    `/api/db/quiz/weak-targets-data?lessonId=${lessonId}&module=${encodeURIComponent(module)}`
+  );
+  const weakData = res.ok
+    ? (await res.json()) as {
+        masteryStatuses: Array<{ itemKey: string; status: string; reviewCount: number }>;
+        wrongAnswers: Array<{ knowledgeKeys: string[] }>;
+      }
+    : { masteryStatuses: [], wrongAnswers: [] };
 
   const masteryMap = new Map(
-    masteryStatuses.map((item) => [item.itemKey, item])
+    weakData.masteryStatuses.map((item) => [item.itemKey, item])
   );
   const wrongKeyCount = new Map<string, number>();
 
-  for (const wrongAnswer of wrongAnswers) {
+  for (const wrongAnswer of weakData.wrongAnswers) {
     for (const key of wrongAnswer.knowledgeKeys || []) {
       wrongKeyCount.set(key, (wrongKeyCount.get(key) || 0) + 1);
     }
@@ -926,18 +929,22 @@ export async function persistQuizSubmission<M extends Module>({
 
   const createdAt = new Date().toISOString();
 
-  await db.quizSessions.add({
-    title: quiz.title,
-    lessonId,
-    module,
-    sourceType: quiz.sourceType || "random_scope",
-    questionType: quiz.questionType || quiz.questions[0]?.type || "multiple_choice",
-    totalQuestions: submission.totalQuestions,
-    correctCount: submission.correctCount,
-    accuracy: submission.accuracy,
-    targetLabels: quiz.resolvedTargets?.map((target) => target.label),
-    results: sessionResults,
-    createdAt,
+  await fetch("/api/db/quiz/save-session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      title: quiz.title,
+      lessonId,
+      module,
+      sourceType: quiz.sourceType || "random_scope",
+      questionType: quiz.questionType || quiz.questions[0]?.type || "multiple_choice",
+      totalQuestions: submission.totalQuestions,
+      correctCount: submission.correctCount,
+      accuracy: submission.accuracy,
+      targetLabels: quiz.resolvedTargets?.map((target) => target.label),
+      results: sessionResults,
+      createdAt,
+    }),
   });
 
   for (const result of submission.results) {

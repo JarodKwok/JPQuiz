@@ -1,55 +1,85 @@
 "use client";
 
-import type { AIMessage, AIProviderConfig } from "@/types";
-import { loadSecureAISettings } from "@/services/secure-settings";
-import {
-  normalizeAISettings,
-  normalizeStoredAIConfig,
-} from "@/services/ai/settings";
+import type { AIMessage } from "@/types";
 
 const RETRYABLE_LOCAL_STATUSES = new Set([429, 502, 503, 504]);
 const MAX_LOCAL_RETRIES = 1;
 
-interface StoredAIConfig {
-  provider: string;
-  config: AIProviderConfig;
+/**
+ * /api/ai/chat 上游或本地配额错误。带 code 让调用方按场景渲染：
+ *   quota_exhausted        — 本月配额用尽（402）
+ *   service_not_configured — admin 还没填模型配置（503）
+ *   unauthenticated        — 没登录（401）
+ *   upstream               — 上游/未知错误
+ */
+export type AIErrorCode =
+  | "quota_exhausted"
+  | "service_not_configured"
+  | "unauthenticated"
+  | "upstream";
+
+export class AIRequestError extends Error {
+  status: number;
+  code: AIErrorCode;
+  serverMessage: string;
+  isPremium?: boolean;
+
+  constructor(opts: {
+    status: number;
+    code: AIErrorCode;
+    serverMessage: string;
+    isPremium?: boolean;
+  }) {
+    super(opts.serverMessage || `AI 请求失败 (${opts.status})`);
+    this.name = "AIRequestError";
+    this.status = opts.status;
+    this.code = opts.code;
+    this.serverMessage = opts.serverMessage;
+    this.isPremium = opts.isPremium;
+  }
 }
 
-async function getStoredAIConfig(): Promise<StoredAIConfig> {
-  const rawSettings = await loadSecureAISettings();
-  if (!rawSettings) {
-    throw new Error("请先在「设置」页面填写并保存 AI 配置。");
-  }
-
-  const settings = normalizeAISettings(rawSettings);
-  const provider = settings.activeProvider || "openai";
-  const config = normalizeStoredAIConfig(provider, settings.providers?.[provider]);
-
-  if (!config?.apiKey) {
-    throw new Error("请先在「设置」页面填写并保存 API Key。");
-  }
-
-  return { provider, config };
+interface ParsedErrorBody {
+  message: string;
+  code: AIErrorCode;
+  isPremium?: boolean;
 }
 
-function parseErrorMessage(errText: string) {
+function parseErrorBody(status: number, errText: string): ParsedErrorBody {
+  let raw: unknown = null;
   try {
-    const errJson = JSON.parse(errText);
-    if (typeof errJson === "string") return errJson;
-    if (errJson?.error && typeof errJson.error === "string") {
-      return errJson.error;
-    }
-    if (errJson?.error?.message && typeof errJson.error.message === "string") {
-      return errJson.error.message;
-    }
-    if (errJson?.message && typeof errJson.message === "string") {
-      return errJson.message;
-    }
+    raw = JSON.parse(errText);
   } catch {
-    // keep raw text
+    // 非 JSON：原文当 message
+    return { message: errText, code: status === 401 ? "unauthenticated" : "upstream" };
   }
 
-  return errText;
+  // 优先解析服务端结构化字段
+  const obj = (typeof raw === "object" && raw !== null ? raw : {}) as Record<string, unknown>;
+  const errField = obj.error;
+  let message = "";
+  let codeStr = "";
+
+  if (typeof obj.message === "string") message = obj.message;
+  if (typeof errField === "string") {
+    codeStr = errField;
+    if (!message) message = errField;
+  } else if (errField && typeof errField === "object") {
+    const inner = errField as Record<string, unknown>;
+    if (typeof inner.message === "string") message = message || inner.message;
+  }
+  if (!message && typeof raw === "string") message = raw;
+
+  let code: AIErrorCode = "upstream";
+  if (codeStr === "quota_exhausted") code = "quota_exhausted";
+  else if (codeStr === "service_not_configured") code = "service_not_configured";
+  else if (codeStr === "unauthenticated" || status === 401) code = "unauthenticated";
+
+  return {
+    message: message || `AI 请求失败 (${status})`,
+    code,
+    isPremium: typeof obj.isPremium === "boolean" ? obj.isPremium : undefined,
+  };
 }
 
 export async function streamAIText(
@@ -65,8 +95,6 @@ export async function streamAIText(
   const jsonMode =
     typeof onDeltaOrOptions === "object" ? onDeltaOrOptions?.jsonMode : false;
 
-  const { provider, config } = await getStoredAIConfig();
-
   let res: Response | null = null;
   let lastError: unknown;
 
@@ -77,8 +105,6 @@ export async function streamAIText(
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           messages,
-          provider,
-          config,
           ...(jsonMode ? { jsonMode: true } : {}),
         }),
       });
@@ -109,7 +135,13 @@ export async function streamAIText(
 
   if (!res.ok) {
     const errText = await res.text();
-    throw new Error(`请求失败 (${res.status}): ${parseErrorMessage(errText)}`);
+    const parsed = parseErrorBody(res.status, errText);
+    throw new AIRequestError({
+      status: res.status,
+      code: parsed.code,
+      serverMessage: parsed.message,
+      isPremium: parsed.isPremium,
+    });
   }
 
   const contentType = res.headers.get("content-type") || "";

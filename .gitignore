@@ -41,6 +41,14 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# SQLite database — 整个 data/ 目录都不入仓（含 wal / shm / bak.* 备份）
+/data/
+
+# 个人收款码图（含真实账号 / 姓名，严禁提交）
+/public/qr/*
+!/public/qr/.gitkeep
+!/public/qr/README.md
+
 # env files
 .env*.local
 .env

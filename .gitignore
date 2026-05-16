@@ -53,6 +53,9 @@ yarn-error.log*
 .env*.local
 .env
 
+# Claude local notes (含服务器 IP / tunnel ID 等敏感细节，不入仓)
+CLAUDE.local.md
+
 # vercel
 .vercel
 
